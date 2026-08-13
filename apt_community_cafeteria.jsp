@@ -40,94 +40,27 @@
 
 <%!
 
-	public String getRequestParam(IssacWeb issacweb, HttpServletRequest request, String strKey) {
-		if(strKey == null || strKey.contentEquals("")) {
-			printLog("A", "getRequestParam strKey null");
-			return "";
-		}
-
-		String strValue = "";
-		if(isDev() == true) {
-			strValue = request.getParameter(strKey);
-			if(strValue == null) strValue = "";
-			try {
-				//개발서버만 UTF-8로 한번더 전환
-				strValue = new String(strValue.getBytes("8859_1"), S_CHARSET);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		} else {
-			strValue = issacweb.getParameter(strKey);
-			if(strValue == null) strValue = "";
-		}
-
-		return strValue;
+	public String getJsonParam(JSONObject json, String strKey) {
+		if (json == null || strKey == null) return "";
+		Object val = json.get(strKey);
+		return val == null ? "" : val.toString();
 	}
 
 
 	/**
-	 * 빌리진아이 데이터 전송 포맷[ 데이터길이(4자리) + 데이터 ] 에 맞게 조합한 후, 클라이언트로 전송..
+	 * JSON 결과 전송
 	 */
-	public void returnData(IssacWeb issacweb, ByteArrayOutputStream baOutStream, OutputStream outStream) {
-		if(baOutStream == null || outStream == null) {
-			return;
-		}
-
+	public void returnJson(HttpServletResponse response, JSONObject jsonResponse) {
 		try {
-
-			byte[] baSendData = null;
-			if(isDev() == true) {
-				baSendData = baOutStream.toByteArray();
-			} else {
-				ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-				baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-				baSendData = baEncryptOutStream.toByteArray();
-			}
-
-			int nSendDataLength = baSendData.length;
-
-			byte[] baSendDataLength = new byte[4];
-			baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-			baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-			baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-			baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-			outStream.write(baSendDataLength, 0, 4);
-			outStream.write(baSendData, 0, nSendDataLength);
-			outStream.flush();
-			outStream.close();
+			printLog("A", "returnJson : " + jsonResponse.toJSONString());
+			response.setContentType("application/json");
+			response.setCharacterEncoding("UTF-8");
+			PrintWriter out = response.getWriter();
+			out.print(jsonResponse.toJSONString());
+			out.flush();
+			out.close();
 		} catch (Exception e) {
-
-			try {
-
-				String errMsg = "Exceptino Msg = " + e.getMessage();
-				baOutStream.write(errMsg.getBytes(S_CHARSET));
-
-				byte[] baSendData = null;
-				if(isDev() == true) {
-					baSendData = baOutStream.toByteArray();
-				} else {
-					ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-					baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-					baSendData = baEncryptOutStream.toByteArray();
-				}
-
-				int nSendDataLength = baSendData.length;
-
-				byte[] baSendDataLength = new byte[4];
-				baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-				baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-				baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-				baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-				outStream.write(baSendDataLength, 0, 4);
-				outStream.write(baSendData, 0, nSendDataLength);
-				outStream.flush();
-				outStream.close();
-			} catch (Exception ex) {
-			}
+			e.printStackTrace();
 		}
 	}
 
@@ -259,36 +192,40 @@ PreparedStatement 	pstmt = null;			// JDBC PreparedStatement Object
 ResultSet 			rs = null;	 			// Query Result Set Object
 
 ResultSetMetaData 	rsMetaData = null;
-IssacWeb					m_issacweb = null;
 
 ResultSet 			rs_votecount = null;	 		// Query Result Set Object
 ResultSet 			rs_community = null;	 		// Query Result Set Object
 
 // Clear out's buffer
 out.clearBuffer();
-out.clear();
-out = pageContext.pushBody();
 
-// outputstream 가져오기
-OutputStream outStream = response.getOutputStream();
+JSONObject resJson = new JSONObject();
 
 try {
+
+	// JSON Body 파싱
+	request.setCharacterEncoding("UTF-8");
+	StringBuilder sb = new StringBuilder();
+	BufferedReader br = request.getReader();
+	String line;
+	while ((line = br.readLine()) != null) {
+		sb.append(line);
+	}
+	JSONParser parser = new JSONParser();
+	JSONObject paramJson = (JSONObject) parser.parse(sb.toString());
+	printLog("D", "apt_community_cafeteria paramJson : " + paramJson.toString());
 
 	// Load JDBC Driver and connect to database
 	Class.forName(driverClass);
 	conn = DriverManager.getConnection(dbUrl, dbUserId, dbUserPasswd);
 
-	// 운영서버이면 암호화 객체 생성
-	if(isDev() == false) {
-		m_issacweb = new IssacWeb(request);
-	}
 	// Get Parameter - SID = query 구분.
-	String strSID = getRequestParam(m_issacweb, request, "SID");
+	String strSID = getJsonParam(paramJson, "SID");
 	printLog("A", "SID : " + strSID);
 
 	if(strSID.contentEquals("get_cafeteria_category")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");
 
 		String strCategoryQuery = "";
 		strCategoryQuery += "SELECT a.CATEGORY_ID, a.CATEGORY_NAME FROM MENU_CATEGORY as a ";
@@ -299,26 +236,29 @@ try {
 		pstmt.setString(1, strAptCode);	
 		rs = pstmt.executeQuery();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
 		rsMetaData = rs.getMetaData();
 
-
 		for(int nRow = 0; rs.next(); nRow++) {
+			JSONObject jsonItem = new JSONObject();
 			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
 				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";					
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				if(strData == null) strData = "";
+				jsonItem.put(rsMetaData.getColumnLabel(nCol), strData);
 			}
-			baOutStream.write(RECORD_DEL);
+			dataArr.add(jsonItem);
 		}
-		returnData(m_issacweb, baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_cafeteria_menu")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");
-		String strCategotyId = getRequestParam(m_issacweb, request, "CategoryId");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");
+		String strCategotyId = getJsonParam(paramJson, "CategoryId");
 
 		String strMenuQuery = "";
 		strMenuQuery += "SELECT MENU_ID, MENU_STATUS, MENU_NAME, MENU_PRICE, MENU_IMAGE_URL, MENU_DESCRIPTION ";
@@ -333,26 +273,29 @@ try {
 	
 		rs = pstmt.executeQuery();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
 		rsMetaData = rs.getMetaData();
 
-
 		for(int nRow = 0; rs.next(); nRow++) {
+			JSONObject jsonItem = new JSONObject();
 			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
 				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";					
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				if(strData == null) strData = "";
+				jsonItem.put(rsMetaData.getColumnLabel(nCol), strData);
 			}
-			baOutStream.write(RECORD_DEL);
+			dataArr.add(jsonItem);
 		}
-		returnData(m_issacweb, baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_cafeteria_menu_detail")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");
-		String strMenuId = getRequestParam(m_issacweb, request, "MenuId");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");
+		String strMenuId = getJsonParam(paramJson, "MenuId");
 
 		String strMenuQuery = "";
 		strMenuQuery += "SELECT MENU_STATUS, MENU_NAME, MENU_PRICE, MENU_IMAGE_URL, MENU_DETAIL_IMAGE_URL, MENU_DESCRIPTION ";
@@ -367,32 +310,35 @@ try {
 	
 		rs = pstmt.executeQuery();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
 		rsMetaData = rs.getMetaData();
 
-
 		for(int nRow = 0; rs.next(); nRow++) {
+			JSONObject jsonItem = new JSONObject();
 			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
 				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";					
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				if(strData == null) strData = "";
+				jsonItem.put(rsMetaData.getColumnLabel(nCol), strData);
 			}
-			baOutStream.write(RECORD_DEL);
+			dataArr.add(jsonItem);
 		}
-		returnData(m_issacweb, baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("submit_menu_order")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");
-		String strMenuIds = getRequestParam(m_issacweb, request, "MenuIds");
-		String strQuantities = getRequestParam(m_issacweb, request, "Quantities");
-		String strPrices = getRequestParam(m_issacweb, request, "Prices");
-		String strUserName = getRequestParam(m_issacweb, request, "UserName");		
-		String strUserDong = getRequestParam(m_issacweb,request,"UserDong");	
-		String strUserHo = getRequestParam(m_issacweb, request, "UserHo");		
-		String strUserPhone = getRequestParam(m_issacweb, request, "UserPhoneNo");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");
+		String strMenuIds = getJsonParam(paramJson, "MenuIds");
+		String strQuantities = getJsonParam(paramJson, "Quantities");
+		String strPrices = getJsonParam(paramJson, "Prices");
+		String strUserName = getJsonParam(paramJson, "UserName");		
+		String strUserDong = getJsonParam(paramJson,"UserDong");	
+		String strUserHo = getJsonParam(paramJson, "UserHo");		
+		String strUserPhone = getJsonParam(paramJson, "UserPhoneNo");
 
 		if(strUserPhone != null) strUserPhone = strUserPhone.replaceAll("-","").replaceAll(" ","");
 		if(strMenuIds == null) strMenuIds = "";
@@ -403,16 +349,13 @@ try {
 		String[] Quantities = strQuantities.split(",");
 		String[] Prices = strPrices.split(",");
 
-		
-
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-
 		if(strMenuIds.contentEquals("") || strQuantities.contentEquals("") || strPrices.contentEquals("") ||
-		MenuIds.length != Quantities.length || Quantities.length != Prices.length) {			
-			int nInvalidArrayLengths = 9;
-			baOutStream.write(Integer.toString(nInvalidArrayLengths).getBytes(S_CHARSET));
-
-			returnData(m_issacweb, baOutStream, outStream);
+		MenuIds.length != Quantities.length || Quantities.length != Prices.length) {
+			resJson.put("RESULT", "SUCCESS");
+			JSONObject jsonData = new JSONObject();
+			jsonData.put("result", "9");
+			resJson.put("DATA", jsonData);
+			returnJson(response, resJson);
 			return;
 		}
 
@@ -518,19 +461,18 @@ try {
 
 	
 	
-		baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(newOrderId.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-
-
-		returnData(m_issacweb, baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		JSONObject jsonData = new JSONObject();
+		jsonData.put("result", Integer.toString(nRet));
+		jsonData.put("orderId", newOrderId);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_order_list")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");	
-		String strItemCount = getRequestParam(m_issacweb, request, "ItemCount");
-		String strLimitCnt = getRequestParam(m_issacweb, request, "LimitCnt");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");	
+		String strItemCount = getJsonParam(paramJson, "ItemCount");
+		String strLimitCnt = getJsonParam(paramJson, "LimitCnt");
 
 		printLog("D","strAptCode : " +strAptCode);
 		printLog("D","strUserId : " +strUserId);
@@ -569,52 +511,49 @@ try {
 
 		}
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		resJson.put("RESULT", "SUCCESS");
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
 		rs = pstmt.executeQuery();
 
-		rsMetaData = rs.getMetaData();
-
-		String strServiceType = "";
 		for(int nRow = 0; rs.next(); nRow++) {
+			JSONObject jsonItem = new JSONObject();
+			String strOrderId = rs.getString(1) != null ? rs.getString(1) : "";
+			String strOrderStatus = rs.getString(2) != null ? rs.getString(2) : "";
+			String strDisplayTime = rs.getString(3) != null ? rs.getString(3) : "";
 			String strPrcie = "";
-			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
-				String strData = rs.getString(nCol);	
-				if(strData == null) strData = "";	
-				if(nCol == 1){
-					try{
-    					String strPriceQuery = "SELECT COALESCE(SUM(PRICE * QUANTITY), 0) FROM ORDER_MENU_DETAIL WHERE ORDER_ID = ? ";		
-						PreparedStatement pstmtPrice = conn.prepareStatement(strPriceQuery);
-						pstmtPrice.setString(1, strData);		
-						ResultSet rsPrice = pstmtPrice.executeQuery();
-						if(rsPrice.next()) {  // 반드시 next()를 호출하고 데이터를 읽어야 함
-							String tempPrice = rsPrice.getString(1);
-							if(tempPrice != null) {
-								strPrcie = tempPrice;
-							}
-						}
-						rsPrice.close();
-						pstmtPrice.close();					
-					}catch(SQLException e){
-						e.printStackTrace();
+			try{
+				String strPriceQuery = "SELECT COALESCE(SUM(PRICE * QUANTITY), 0) FROM ORDER_MENU_DETAIL WHERE ORDER_ID = ? ";
+				PreparedStatement pstmtPrice = conn.prepareStatement(strPriceQuery);
+				pstmtPrice.setString(1, strOrderId);
+				ResultSet rsPrice = pstmtPrice.executeQuery();
+				if(rsPrice.next()) {
+					String tempPrice = rsPrice.getString(1);
+					if(tempPrice != null) {
+						strPrcie = tempPrice;
 					}
 				}
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);			
-				if(nCol == rsMetaData.getColumnCount()) {
-					baOutStream.write(strPrcie.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);			
-				}	
+				rsPrice.close();
+				pstmtPrice.close();
+			}catch(SQLException e){
+				e.printStackTrace();
 			}
-			baOutStream.write(RECORD_DEL);
+			jsonItem.put("ORDER_ID", strOrderId);
+			jsonItem.put("ORDER_STATUS", strOrderStatus);
+			jsonItem.put("DISPLAY_TIME", strDisplayTime);
+			jsonItem.put("TOTAL_PRICE", strPrcie);
+			dataArr.add(jsonItem);
 		}
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(m_issacweb, baOutStream, outStream);
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		// 데이터 조립한 후, 클라이언트로 전송..
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_order_detail")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");	
-		String strOrderId = getRequestParam(m_issacweb, request, "OrderId");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");	
+		String strOrderId = getJsonParam(paramJson, "OrderId");
 
 		String strQuery = "";
 		strQuery += " SELECT ORDER_TIME, PICKUP_TIME ";
@@ -650,45 +589,40 @@ try {
 
 		
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		resJson.put("RESULT", "SUCCESS");
+		JSONObject jsonData = new JSONObject();
+		jsonData.put("orderTime", strOrderTime);
+		jsonData.put("pickupTime", strPickUpTime);
+		jsonData.put("totalPrice", strTotalPrice);
 
-		baOutStream.write(strOrderTime.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strPickUpTime.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strTotalPrice.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		
 		String strMenuQuery = "";
-		strMenuQuery += "SELECT (SELECT MENU_NAME FROM MENU WHERE MENU_ID = a.MENU_ID), ";
+		strMenuQuery += "SELECT (SELECT MENU_NAME FROM MENU WHERE MENU_ID = a.MENU_ID) as MENU_NAME, ";
 		strMenuQuery += " a.QUANTITY, a.PRICE ";
 		strMenuQuery += " FROM ORDER_MENU_DETAIL as a";
 		strMenuQuery += " WHERE ORDER_ID = ? ";
-		
+
 		pstmt = conn.prepareStatement(strMenuQuery);
 		pstmt.setString(1, strOrderId);
 		rs = pstmt.executeQuery();
 
-		rsMetaData = rs.getMetaData();
-
-		String strServiceType = "";
+		JSONArray dataArr = new JSONArray();
 		for(int nRow = 0; rs.next(); nRow++) {
-			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
-				String strData = rs.getString(nCol);	
-				if(strData == null) strData = "";				
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);			
-			}
+			JSONObject jsonItem = new JSONObject();
+			jsonItem.put("MENU_NAME", rs.getString(1) != null ? rs.getString(1) : "");
+			jsonItem.put("QUANTITY", rs.getString(2) != null ? rs.getString(2) : "");
+			jsonItem.put("PRICE", rs.getString(3) != null ? rs.getString(3) : "");
+			dataArr.add(jsonItem);
 		}
-		baOutStream.write(RECORD_DEL);
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
 
-		returnData(m_issacweb, baOutStream, outStream);
+		returnJson(response, resJson);
 
 
 
 	}else if(strSID.contentEquals("get_cafeteria_purchase_limit")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strCommuntyType = getRequestParam(m_issacweb, request, "CommunityType");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strCommuntyType = getJsonParam(paramJson, "CommunityType");
 
 		printLog("D"," strAptCode : " + strAptCode);
 		printLog("D"," strCommuntyType : " + strCommuntyType);
@@ -705,31 +639,34 @@ try {
 	
 		rs = pstmt.executeQuery();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
 		rsMetaData = rs.getMetaData();
 
-
 		for(int nRow = 0; rs.next(); nRow++) {
+			JSONObject jsonItem = new JSONObject();
 			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
 				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";					
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				if(strData == null) strData = "";
+				jsonItem.put(rsMetaData.getColumnLabel(nCol), strData);
 			}
-			baOutStream.write(RECORD_DEL);
+			dataArr.add(jsonItem);
 		}
-		returnData(m_issacweb, baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 	}
 }catch(Exception e) {
-	ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 	String errMsg = "Exception Msg = " + e.getMessage();
-	baOutStream.write(errMsg.getBytes(S_CHARSET));
 	printLog("A", " ###### errMsg  = #####" + errMsg);
 
-	// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-	returnData(m_issacweb, baOutStream, outStream);
+	resJson.put("RESULT", "FAIL");
+	resJson.put("ERRMSG", e.getMessage());
+	// 데이터 조립한 후, 클라이언트로 전송..
+	returnJson(response, resJson);
 }
 finally {
 	// Release a database resources
