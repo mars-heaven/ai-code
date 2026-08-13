@@ -35,100 +35,27 @@
 
 <%!
 
-	public String getRequestParam(IssacWeb issacweb, HttpServletRequest request, String strKey) {
-		if(strKey == null || strKey.contentEquals("")) {
-			printLog("A", "getRequestParam strKey null");
-			return "";
-		}
-
-		String strValue = "";
-		if(isDev() == true) {
-			strValue = request.getParameter(strKey);
-			if(strValue == null) strValue = "";
-			try {
-				//개발서버만 UTF-8로 한번더 전환
-				strValue = new String(strValue.getBytes("8859_1"), S_CHARSET);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		} else {
-			strValue = issacweb.getParameter(strKey);
-			if(strValue == null) strValue = "";
-		}
-
-		return strValue;
+	public String getJsonParam(JSONObject json, String strKey) {
+		if (json == null || strKey == null) return "";
+		Object val = json.get(strKey);
+		return val == null ? "" : val.toString();
 	}
 
 
 	/**
-	 * 빌리진아이 데이터 전송 포맷[ 데이터길이(4자리) + 데이터 ] 에 맞게 조합한 후, 클라이언트로 전송..
+	 * JSON 결과 전송
 	 */
-	public void returnData(IssacWeb issacweb, ByteArrayOutputStream baOutStream, OutputStream outStream) {
-		if(baOutStream == null || outStream == null) {
-			return;
-		}
-
+	public void returnJson(HttpServletResponse response, JSONObject jsonResponse) {
 		try {
-
-			byte[] baSendData = null;
-			if(isDev() == true) {
-				baSendData = baOutStream.toByteArray();
-			} else {
-				if (baOutStream.size() == 0) {
-					// 빈값 처리
-					baOutStream.write(" ".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-					baOutStream.write(RECORD_DEL);
-				}
-				ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-				baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-				baSendData = baEncryptOutStream.toByteArray();
-			}
-
-			int nSendDataLength = baSendData.length;
-
-			byte[] baSendDataLength = new byte[4];
-			baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-			baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-			baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-			baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-			outStream.write(baSendDataLength, 0, 4);
-			outStream.write(baSendData, 0, nSendDataLength);
-			outStream.flush();
-			outStream.close();
+			printLog("A", "returnJson : " + jsonResponse.toJSONString());
+			response.setContentType("application/json");
+			response.setCharacterEncoding("UTF-8");
+			PrintWriter out = response.getWriter();
+			out.print(jsonResponse.toJSONString());
+			out.flush();
+			out.close();
 		} catch (Exception e) {
-
-			try {
-
-				String errMsg = "Exceptino Msg = " + e.getMessage();
-				baOutStream.write(errMsg.getBytes(S_CHARSET));
-
-				byte[] baSendData = null;
-				if(isDev() == true) {
-					baSendData = baOutStream.toByteArray();
-				} else {
-					ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-					baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-					baSendData = baEncryptOutStream.toByteArray();
-				}
-
-				int nSendDataLength = baSendData.length;
-
-				byte[] baSendDataLength = new byte[4];
-				baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-				baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-				baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-				baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-				outStream.write(baSendDataLength, 0, 4);
-				outStream.write(baSendData, 0, nSendDataLength);
-				outStream.flush();
-				outStream.close();
-			} catch (Exception ex) {
-			}
+			e.printStackTrace();
 		}
 	}
 
@@ -275,37 +202,41 @@ PreparedStatement 	pstmt = null;			// JDBC PreparedStatement Object
 ResultSet 			rs = null;	 			// Query Result Set Object
 
 ResultSetMetaData 	rsMetaData = null;
-IssacWeb					m_issacweb = null;
 
 ResultSet 			rs_votecount = null;	 		// Query Result Set Object
 ResultSet 			rs_community = null;	 		// Query Result Set Object
 
 // Clear out's buffer
 out.clearBuffer();
-out.clear();
-out = pageContext.pushBody();
 
-// outputstream 가져오기
-OutputStream outStream = response.getOutputStream();
+JSONObject resJson = new JSONObject();
 
 try {
+
+	// JSON Body 파싱
+	request.setCharacterEncoding("UTF-8");
+	StringBuilder sb = new StringBuilder();
+	BufferedReader br = request.getReader();
+	String line;
+	while ((line = br.readLine()) != null) {
+		sb.append(line);
+	}
+	JSONParser parser = new JSONParser();
+	JSONObject paramJson = (JSONObject) parser.parse(sb.toString());
+	printLog("D", "apt_community_facility paramJson : " + paramJson.toString());
 
 	// Load JDBC Driver and connect to database
 	Class.forName(driverClass);
 	conn = DriverManager.getConnection(dbUrl, dbUserId, dbUserPasswd);
 
-	// 운영서버이면 암호화 객체 생성
-	if(isDev() == false) {
-		m_issacweb = new IssacWeb(request);
-	}
 	// Get Parameter - SID = query 구분.
-	String strSID = getRequestParam(m_issacweb, request, "SID");
+	String strSID = getJsonParam(paramJson, "SID");
 	printLog("A", "SID : " + strSID);
 
     if(strSID.contentEquals("get_community_facility")) {
 	//커뮤니티 시설 조회
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");
 
 		String strDongHoQuery = "";
 		strDongHoQuery += "SELECT USER_DONG, USER_HO, USER_NAME ";
@@ -371,7 +302,8 @@ try {
 
 		rsMetaData = rs.getMetaData();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
 		String strType = "";
 		String strTitle = "";
@@ -551,31 +483,25 @@ try {
 			}
 
 			
-			baOutStream.write(strType.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strTitle.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strState.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strStateTitle.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strImage.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-
-			baOutStream.write(RECORD_DEL);
-
-
+						JSONObject jsonItem = new JSONObject();
+			jsonItem.put("type", strType);
+			jsonItem.put("title", strTitle);
+			jsonItem.put("time", strTime);
+			jsonItem.put("state", strState);
+			jsonItem.put("stateTitle", strStateTitle);
+			jsonItem.put("image", strImage);
+			dataArr.add(jsonItem);
 		}
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(m_issacweb, baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_community_facility_info")) {
 	//커뮤니티 시설 설명
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");
-		String strCommunityType = getRequestParam(m_issacweb, request, "CommunityType");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");
+		String strCommunityType = getJsonParam(paramJson, "CommunityType");
 
 		if(strAptCode == null || strAptCode.contentEquals("")){
 			strAptCode = "0";
@@ -601,7 +527,8 @@ try {
 
 		rsMetaData = rs.getMetaData();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 		String strTitle = "";
 		String strTime = "";
 		String strCount = "";
@@ -886,43 +813,30 @@ try {
 
 		printLog("D"," strInfo : " + strInfo);
 		// 타이틀, 상태, 지도, 상세정보
-		baOutStream.write(strTitle.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strState.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strStateTitle.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strImage.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMap.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strInfo.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strServiceType.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strDescription.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+				jsonData.put("title", strTitle);
+		jsonData.put("state", strState);
+		jsonData.put("stateTitle", strStateTitle);
+		jsonData.put("image", strImage);
+		jsonData.put("map", strMap);
+		jsonData.put("info", strInfo);
+		jsonData.put("serviceType", strServiceType);
+		jsonData.put("description", strDescription);
 		if(!strGender.contentEquals("0")){
 			strGender = "1";
 		}
-		baOutStream.write(strGender.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strSecurity.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);		
-		baOutStream.write(RECORD_DEL);
-
-
-
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(m_issacweb, baOutStream, outStream);
+		jsonData.put("gender", strGender);
+		jsonData.put("security", strSecurity);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_community_settings")){
 		// 커뮤니티 시설 최대 선택일, 보안 여부 조회
 		// 20240627 얼굴인식만 있음
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");
-		String strCommunityType = getRequestParam(m_issacweb, request, "CommunityType");
-		String strMembershipId = getRequestParam(m_issacweb, request, "MembershipId");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");
+		String strCommunityType = getJsonParam(paramJson, "CommunityType");
+		String strMembershipId = getJsonParam(paramJson, "MembershipId");
 
 		if(strAptCode == null || strAptCode.contentEquals("")){
 			strAptCode = "0";
@@ -993,32 +907,27 @@ try {
 		}
 
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(strMaxDay.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strSecurityType.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMap.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		//baOutStream.write(strSelfReservationFlag.getBytes(S_CHARSET));
-		//baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strReservationStandardDay.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMinConsecutiveReservation.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMaxConsecutiveReservation.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(m_issacweb, baOutStream, outStream);
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
+				jsonData.put("maxDay", strMaxDay);
+		jsonData.put("securityType", strSecurityType);
+		jsonData.put("map", strMap);
+		jsonData.put("reservationStandardDay", strReservationStandardDay);
+		jsonData.put("minConsecutiveReservation", strMinConsecutiveReservation);
+		jsonData.put("maxConsecutiveReservation", strMaxConsecutiveReservation);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", jsonData);
+		// 데이터 조립한 후, 클라이언트로 전송..
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_community_seat_map")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");		
-		String strCommunityType = getRequestParam(m_issacweb, request, "CommunityType");		
-		String strMembershipId = getRequestParam(m_issacweb, request, "MembershipId");		
-		String strOptionId = getRequestParam(m_issacweb, request, "OptionId");		
-		String strUserId = getRequestParam(m_issacweb, request, "UserId");		
-		String strGender = getRequestParam(m_issacweb, request, "Gender");
-		String strReservationId = getRequestParam(m_issacweb, request, "ReservationId");
+		String strAptCode = getJsonParam(paramJson, "AptCode");		
+		String strCommunityType = getJsonParam(paramJson, "CommunityType");		
+		String strMembershipId = getJsonParam(paramJson, "MembershipId");		
+		String strOptionId = getJsonParam(paramJson, "OptionId");		
+		String strUserId = getJsonParam(paramJson, "UserId");		
+		String strGender = getJsonParam(paramJson, "Gender");
+		String strReservationId = getJsonParam(paramJson, "ReservationId");
 
 		if(strMembershipId == null){
 			strMembershipId = "";		
@@ -1171,15 +1080,17 @@ try {
 			strMapURL = rs.getString(1);
 		}
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(strMapURL.getBytes(S_CHARSET));
-
-		returnData(m_issacweb, baOutStream, outStream);
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
+				jsonData.put("mapUrl", strMapURL);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 		
 	}else if(strSID.contentEquals("get_guestroom_image")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
-		String strRoomNumber = getRequestParam(m_issacweb, request, "RoomNumber");
-		String strCommunityType = getRequestParam(m_issacweb, request, "CommunityType");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strRoomNumber = getJsonParam(paramJson, "RoomNumber");
+		String strCommunityType = getJsonParam(paramJson, "CommunityType");
 
 		String strImage = " ";
 
@@ -1204,16 +1115,17 @@ try {
 			strImage = "/upload/1/community/community_10.png";	
 		}
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 		
-		baOutStream.write(strImage.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-	
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(m_issacweb, baOutStream, outStream);
+				jsonData.put("image", strImage);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", jsonData);
+		// 데이터 조립한 후, 클라이언트로 전송..
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_guestroom_number")){
-		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
 
 		String strRoomNumberQuery = "";
 		strRoomNumberQuery += "SELECT ROOM_NUMBER ";
@@ -1225,30 +1137,33 @@ try {
 
 		rsMetaData = rs.getMetaData();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
-		for(int nRow = 0; rs.next(); nRow++) {
+				for(int nRow = 0; rs.next(); nRow++) {
+			JSONObject jsonItem = new JSONObject();
 			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
 				String strData = rs.getString(nCol);
 				if(strData == null) strData = "";
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				jsonItem.put(rsMetaData.getColumnLabel(nCol), strData);
 			}
-			baOutStream.write(RECORD_DEL);
+			dataArr.add(jsonItem);
 		}
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(m_issacweb, baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 	}
 
 }catch(Exception e) {
-	ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 	String errMsg = "Exception Msg = " + e.getMessage();
-	baOutStream.write(errMsg.getBytes(S_CHARSET));
 	printLog("A", " ###### errMsg  = #####" + errMsg);
 
-	// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-	returnData(m_issacweb, baOutStream, outStream);
+	resJson.put("RESULT", "FAIL");
+	resJson.put("ERRMSG", e.getMessage());
+	// 데이터 조립한 후, 클라이언트로 전송..
+	returnJson(response, resJson);
 }
 finally {
 	// Release a database resources
