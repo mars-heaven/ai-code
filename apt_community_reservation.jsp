@@ -46,70 +46,27 @@
 <%@ include file="./apt_global_payment.jsp" %>
 
 <%!
-	public String getRequestParam(HttpServletRequest request, String strKey) {
-		if(strKey == null || strKey.contentEquals("")) {
-			printLog("A", "getRequestParam strKey null");
-			return "";
-		}
-		
-		String strValue = request.getParameter(strKey);
-		if(strValue == null) strValue = "";
+	public String getJsonParam(JSONObject json, String strKey) {
+		if (json == null || strKey == null) return "";
+		Object val = json.get(strKey);
+		return val == null ? "" : val.toString();
+	}
 
+
+	/**
+	 * JSON 결과 전송
+	 */
+	public void returnJson(HttpServletResponse response, JSONObject jsonResponse) {
 		try {
-			strValue = new String(strValue.getBytes("8859_1"), S_CHARSET);
+			printLog("A", "returnJson : " + jsonResponse.toJSONString());
+			response.setContentType("application/json");
+			response.setCharacterEncoding("UTF-8");
+			PrintWriter out = response.getWriter();
+			out.print(jsonResponse.toJSONString());
+			out.flush();
+			out.close();
 		} catch (Exception e) {
 			e.printStackTrace();
-		}
-		
-		return strValue;
-	}
-	
-	/**
-	 * 빌리진아이 데이터 전송 포맷[ 데이터길이(4자리) + 데이터 ] 에 맞게 조합한 후, 클라이언트로 전송..
-	 */
-	public void returnData(ByteArrayOutputStream baOutStream, OutputStream outStream) {
-		if(baOutStream == null || outStream == null) {
-			return;
-		}
-
-		try {
-			byte[] baSendData = null;
-			baSendData = baOutStream.toByteArray();
-
-			int nSendDataLength = baSendData.length;
-			
-			byte[] baSendDataLength = new byte[4];
-			baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);		
-			baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-			baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-			baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-			outStream.write(baSendDataLength, 0, 4);
-			outStream.write(baSendData, 0, nSendDataLength);
-			outStream.flush();
-			outStream.close();
-		} catch (Exception e) {
-			try {
-				String errMsg = "Exceptino Msg = " + e.getMessage();
-				baOutStream.write(errMsg.getBytes(S_CHARSET));
-			
-				byte[] baSendData = null;
-				baSendData = baOutStream.toByteArray();
-	
-				int nSendDataLength = baSendData.length;
-				
-				byte[] baSendDataLength = new byte[4];
-				baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);		
-				baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-				baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-				baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-			
-				outStream.write(baSendDataLength, 0, 4);
-				outStream.write(baSendData, 0, nSendDataLength);
-				outStream.flush();
-				outStream.close();
-			} catch (Exception ex) {
-			}
 		}
 	}
 
@@ -515,29 +472,38 @@ ResultSet 			rs_community = null;	 		// Query Result Set Object
 
 // Clear out's buffer
 out.clearBuffer();
-out.clear();
-out = pageContext.pushBody();
 
-// outputstream 가져오기
-OutputStream outStream = response.getOutputStream();
+JSONObject resJson = new JSONObject();
 
 try {
+
+	// JSON Body 파싱
+	request.setCharacterEncoding("UTF-8");
+	StringBuilder sb = new StringBuilder();
+	BufferedReader br = request.getReader();
+	String line;
+	while ((line = br.readLine()) != null) {
+		sb.append(line);
+	}
+	JSONParser parser = new JSONParser();
+	JSONObject paramJson = (JSONObject) parser.parse(sb.toString());
+	printLog("D", "apt_community_reservation paramJson : " + paramJson.toString());
 
 	// Load JDBC Driver and connect to database
 	Class.forName(driverClass);
 	conn = DriverManager.getConnection(dbUrl, dbUserId, dbUserPasswd);
 
 	// Get Parameter - SID = query 구분.
-	String strSID = getRequestParam(request, "SID");
+	String strSID = getJsonParam(paramJson, "SID");
 	printLog("A", "SID : " + strSID);
 
     if(strSID.contentEquals("cancel_myreservation")) {
 	//예약 취소하기
-		String strAptCommunityReservationId = getRequestParam(request, "ReservationId");
-		String strRequestCancelTime = getRequestParam(request, "CancelTime");
-		String strRequestCancelReason = getRequestParam(request, "CancelReason");
-		String strRequestCancelChannel = getRequestParam(request, "CancelChannel");
-		String strIsRefund = getRequestParam(request, "IsRefund"); // "0" : 환불 안 함 or "1" : 환불 함
+		String strAptCommunityReservationId = getJsonParam(paramJson, "ReservationId");
+		String strRequestCancelTime = getJsonParam(paramJson, "CancelTime");
+		String strRequestCancelReason = getJsonParam(paramJson, "CancelReason");
+		String strRequestCancelChannel = getJsonParam(paramJson, "CancelChannel");
+		String strIsRefund = getJsonParam(paramJson, "IsRefund"); // "0" : 환불 안 함 or "1" : 환불 함
 
 		if(strRequestCancelTime == null) {
 			strRequestCancelTime = "";
@@ -573,8 +539,8 @@ try {
 		int nRet = pstmt.executeUpdate();
 
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
+		JSONObject baOutStream = new JSONObject();
+		baOutStream.put("result", Integer.toString(nRet));
 		
 		// 얼굴인식을 쓰는 커뮤니티센터면 삭제 API도 호출
 		// 현재 예약한 서비스에 해당하는 문을 조회환 다음 for문으로 문에 등록된 사용자 제거
@@ -1159,18 +1125,19 @@ try {
 		}
 		
 		
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 		
 	} else if(strSID.contentEquals("get_reservation_list")) { //내 예약 내역 가져오기
 
-		String strAptCode = getRequestParam(request, "AptCode");
-		String strUserId = getRequestParam(request, "UserId");		
-		String strItemCount = getRequestParam(request, "ItemCount");
-		String strLimitCnt = getRequestParam(request, "LimitCnt");
-		String strDong = getRequestParam(request, "UserDong");
-		String strHo = getRequestParam(request, "UserHo");
-		String strUserName = getRequestParam(request, "UserName");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");		
+		String strItemCount = getJsonParam(paramJson, "ItemCount");
+		String strLimitCnt = getJsonParam(paramJson, "LimitCnt");
+		String strDong = getJsonParam(paramJson, "UserDong");
+		String strHo = getJsonParam(paramJson, "UserHo");
+		String strUserName = getJsonParam(paramJson, "UserName");
 		
 		// 예약 내역 조회 시 해당 유저에 동,호, 아파트코드, 성명을 기준으로 
 		// 예약 테이블에 유저 아이디가 없는 경우 UPDATE해서 유저 아이디를 넣어주는 쿼리 동작
@@ -1209,7 +1176,8 @@ try {
 		// 레코드 카운터 사용 안 함
 
 		// 데이터 내릴 준비
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 		
 		// 리턴 데이터 
 		// 예약 번호, 시설명, 칩 타이틀(D-n일), 예약 자리 ,날짜, 시간, 이미지
@@ -1588,6 +1556,7 @@ try {
 		
 			}
 			
+			JSONObject jsonItem = new JSONObject();
 			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
 				String strData = rs.getString(nCol);	
 
@@ -1658,8 +1627,7 @@ try {
 						}
 					}
 					
-					baOutStream.write(strData.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					jsonItem.put(rsMetaData.getColumnLabel(nCol), strData);
 					
 				}
 			}
@@ -2169,22 +2137,16 @@ try {
 			// 	strState = strCommunityType.contentEquals(TYPE_GUESTHOUSE) ? "1" : "4";
 			// }
 
-			baOutStream.write(strQRId.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strQRSecurityCode.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strSecurity.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("qrId", strQRId);
+			jsonItem.put("qrSecurityCode", strQRSecurityCode);
+			jsonItem.put("security", strSecurity);
 
-			baOutStream.write(strActualStartTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strActualEndTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("actualStartTime", strActualStartTime);
+			jsonItem.put("actualEndTime", strActualEndTime);
 
-			baOutStream.write(strState.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("state", strState);
 
-			baOutStream.write(RECORD_DEL);
+			dataArr.add(jsonItem);
 		
 			strQRId ="";
 			strQRSecurityCode = "";
@@ -2201,15 +2163,17 @@ try {
 			strDiffDate = "";
 			strCommunityState = "";
 		}
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 	} else if(strSID.contentEquals("get_reservation_info")) {
 		// 내 예약 상세보기
 		// 예약 아이디만 있어도 가능 
-		String strAptCode = getRequestParam(request, "AptCode");
-		String strUserId = getRequestParam(request, "UserId");		
-		String strReservationId = getRequestParam(request, "ReservationId");
-		String strRequestUserName = getRequestParam(request, "UserName");	
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");		
+		String strReservationId = getJsonParam(paramJson, "ReservationId");
+		String strRequestUserName = getJsonParam(paramJson, "UserName");	
 
 		// 필요한 리턴값
 		// 시설명, 시설 이미지, 신청자 성함,(이용자 성함 있으면 없으면 "") 동/호, 시설내역(시설명 + 자리), 날짜, 시간,
@@ -3254,123 +3218,81 @@ try {
 				strSeatChangeAble = "0";
 			}
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject baOutStream = new JSONObject();
 
-		baOutStream.write(strImage.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("image", strImage);
 
-		baOutStream.write(strTitle.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("title", strTitle);
 
-		baOutStream.write(strInfo.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("info", strInfo);
 
 		// 취소 가능 여부 1 : 취소 가능, 0 : 취소 불가능
-		baOutStream.write(strCancellable.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("cancellable", strCancellable);
 
 		// 버튼 텍스트 취소가능하면 취소하기 불가능하면 
 		// 예약 mm분전에는 취소가 불가능합니다.
-		baOutStream.write(strButtonContext.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("buttonContext", strButtonContext);
 
 		// 취소 가능 날짜 취소가 불가능해지면 빈 스트링
-		baOutStream.write(strCancellableDate.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("cancellableDate", strCancellableDate);
 
 		// 버튼 보임 여부 1 : 보임, 0 안 보임
-		baOutStream.write(strButtonVisibility.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("buttonVisibility", strButtonVisibility);
 
-		baOutStream.write(strSecurity.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("security", strSecurity);
 
 		if(isExpiration || isCanceled){
 			strSeatChangeAble = "0";
 		}
-		baOutStream.write(strSeatChangeAble.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		baOutStream.put("seatChangeAble", strSeatChangeAble);
 
-		baOutStream.write(strMembershipId.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		baOutStream.put("membershipId", strMembershipId);
 
-		baOutStream.write(strOptionIds.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		baOutStream.put("optionIds", strOptionIds);
 
-		baOutStream.write(strPlace.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		baOutStream.put("place", strPlace);
 
-		if(strDate.length() == 16){		
-			baOutStream.write(strDate.substring(0,8).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(strDate.substring(8,strDate.length()).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);							
+		if(strDate.length() == 16){
+			baOutStream.put("startDate", strDate.substring(0,8));
+			baOutStream.put("endDate", strDate.substring(8,strDate.length()));
 		}else{
-			baOutStream.write(strDate.getBytes(S_CHARSET)); // 자리변경시 문제 생기면 다시 빈문자열로 수정 요망
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(strDate.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
+			baOutStream.put("startDate", strDate);
+			baOutStream.put("endDate", strDate);
 		}
 
 		if(calStart != null) {
-			baOutStream.write(sdfHHmm.format(calStart.getTime()).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(sdfHHmm.format(calEnd.getTime()).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			baOutStream.put("startTime", sdfHHmm.format(calStart.getTime()));
+			baOutStream.put("endTime", sdfHHmm.format(calEnd.getTime()));
 		} else {
-			baOutStream.write(strTime.substring(0,4).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strTime.substring(4,8).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			baOutStream.put("startTime", strTime.substring(0,4));
+			baOutStream.put("endTime", strTime.substring(4,8));
 		}
 
-		baOutStream.write(strCommunitYType.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("communityType", strCommunitYType);
 
-		if(strReceiptURL == null || strReceiptURL.trim().contentEquals("")){
-			baOutStream.write("".getBytes(S_CHARSET));
-		}else{
-			baOutStream.write(strReceiptURL.getBytes(S_CHARSET));
-		}
-		baOutStream.write(COLUMN_DEL);	
+		baOutStream.put("receiptURL", (strReceiptURL == null || strReceiptURL.trim().contentEquals("")) ? "" : strReceiptURL);	
 		
-		baOutStream.write(strQRId.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("qrId", strQRId);
 
-		baOutStream.write(strQRSecurityCode.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("qrSecurityCode", strQRSecurityCode);
 
-		baOutStream.write(strState.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("state", strState);
 
-		if(strRefundableDate == null || strRefundableDate.trim().contentEquals("")){
-			baOutStream.write("".getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-		}else{
-			baOutStream.write(strRefundableDate.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-		}
+		baOutStream.put("refundableDate", (strRefundableDate == null || strRefundableDate.trim().contentEquals("")) ? "" : strRefundableDate);
 
 		// 마지막 응답값으로 MEMBERSHIP_USER_LIST_ID 추가
-		if(strMembershipUserListId == null || strMembershipUserListId.trim().contentEquals("")) {
-			baOutStream.write("0".getBytes(S_CHARSET));
-		}else{
-			baOutStream.write(
-				strMembershipUserListId.getBytes(S_CHARSET)
-			);
-		}
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("membershipUserListId", (strMembershipUserListId == null || strMembershipUserListId.trim().contentEquals("")) ? "0" : strMembershipUserListId);
 
-		baOutStream.write(RECORD_DEL);	
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 
 	} else if(strSID.contentEquals("get_qr_info_list")) {
 
 		// QR 정보 조회
-		String strAptCode = getRequestParam(request, "AptCode");
-		//String strCommunityType = getRequestParam(request, "CommunityType");
-		//String strGender = getRequestParam(request, "Gender");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		//String strCommunityType = getJsonParam(paramJson, "CommunityType");
+		//String strGender = getJsonParam(paramJson, "Gender");
 		// 해당 아파트의 커뮤니티 시설에 대한 QR 정보 조회 
 
 		String strQRListQuery = "";
@@ -3387,35 +3309,35 @@ try {
 		pstmt = conn.prepareStatement(strQRListQuery);
 		rs = pstmt.executeQuery();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
 		// 여러개 존재하니까 커뮤니티 타입, 성별, QR ID, 보안코드 순으로 구분자 붙여서 리스트 형태로 전달
 		while(rs.next()){
+			JSONObject jsonItem = new JSONObject();
 			String strCommunityType = rs.getString("COMMUNITY_TYPE") != null ? rs.getString("COMMUNITY_TYPE") : "";
 			String strTitle = rs.getString("TITLE") != null ? rs.getString("TITLE") : "";
 			String strGender = rs.getString("GENDER") != null ? rs.getString("GENDER") : "";
 			String strQRId = rs.getString("ID") != null ? rs.getString("ID") : "";
 			String strQRSecurityCode = rs.getString("SECURITY_CODE") != null ? rs.getString("SECURITY_CODE") : "";
-			baOutStream.write(strCommunityType.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strTitle.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strGender.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strQRId.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strQRSecurityCode.getBytes(S_CHARSET));
-			baOutStream.write(RECORD_DEL);
+			jsonItem.put("communityType", strCommunityType);
+			jsonItem.put("title", strTitle);
+			jsonItem.put("gender", strGender);
+			jsonItem.put("qrId", strQRId);
+			jsonItem.put("qrSecurityCode", strQRSecurityCode);
+			dataArr.add(jsonItem);
 		}
 
-			// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 
 
 
 	} else if(strSID.contentEquals("reservation_community_schedule")) {
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject baOutStream = new JSONObject();
 		String strEmpty = "";
 
 		// 결제/트랜잭션 상태 플래그
@@ -3453,24 +3375,24 @@ try {
 			// =========================================================
 			// 1. 요청 파라미터 수집
 			// =========================================================
-			String strAptCommunityType = getRequestParam(request, "CommunityType");
-			String strUserId = getRequestParam(request, "UserId");
-			String strUserDong = getRequestParam(request, "UserDong");
-			String strUserHo = getRequestParam(request, "UserHo");
-			String strReservationUserName = getRequestParam(request, "ReservationUserName");
-			String strReservationUserPhone = getRequestParam(request, "ReservationUserPhone");
-			String strPlace = getRequestParam(request, "Place");
-			String strDate = getRequestParam(request, "Date");
-			String strTime = getRequestParam(request, "Time");
-			String strAptCode = getRequestParam(request, "AptCode");
-			String strUserName = getRequestParam(request, "UserName");
-			String strMembershipId = getRequestParam(request, "MembershipId");
-			strTotalPrice = getRequestParam(request, "Price");
-			String strPeople = getRequestParam(request, "People");
-			String strGender = getRequestParam(request, "Gender");
-			String strUUID = getRequestParam(request, "UUID");
-			strPaymentId = getRequestParam(request, "PaymentId");
-			strReceiptId = getRequestParam(request, "ReceiptId");
+			String strAptCommunityType = getJsonParam(paramJson, "CommunityType");
+			String strUserId = getJsonParam(paramJson, "UserId");
+			String strUserDong = getJsonParam(paramJson, "UserDong");
+			String strUserHo = getJsonParam(paramJson, "UserHo");
+			String strReservationUserName = getJsonParam(paramJson, "ReservationUserName");
+			String strReservationUserPhone = getJsonParam(paramJson, "ReservationUserPhone");
+			String strPlace = getJsonParam(paramJson, "Place");
+			String strDate = getJsonParam(paramJson, "Date");
+			String strTime = getJsonParam(paramJson, "Time");
+			String strAptCode = getJsonParam(paramJson, "AptCode");
+			String strUserName = getJsonParam(paramJson, "UserName");
+			String strMembershipId = getJsonParam(paramJson, "MembershipId");
+			strTotalPrice = getJsonParam(paramJson, "Price");
+			String strPeople = getJsonParam(paramJson, "People");
+			String strGender = getJsonParam(paramJson, "Gender");
+			String strUUID = getJsonParam(paramJson, "UUID");
+			strPaymentId = getJsonParam(paramJson, "PaymentId");
+			strReceiptId = getJsonParam(paramJson, "ReceiptId");
 
 			// =========================================================
 			// 2. 파라미터 기본값 보정
@@ -3512,21 +3434,15 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 				strUserHo.contentEquals("") ||
 				strReservationUserName.contentEquals("")) {
 
-					baOutStream.reset();
 
-					baOutStream.write("0".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					baOutStream.put("result", "0");
+					baOutStream.put("message", "예약 필수 정보가 없습니다.");
+					baOutStream.put("reservationId", strEmpty);
+					baOutStream.put("reservationInfo", strEmpty);
 
-					baOutStream.write("예약 필수 정보가 없습니다.".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-
-					baOutStream.write(strEmpty.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-
-					baOutStream.write(strEmpty.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-
-					returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 					return;
 			}
 
@@ -3773,28 +3689,22 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 			boolean isSuccess = false;
 
 			if(resultImageCnt.contentEquals("0") && strSecurityType.contentEquals("1")){
-				baOutStream.write("9".getBytes(S_CHARSET));
+				baOutStream.put("result", "9");
 			}else{
 				if(resultCnt.contentEquals("0")){
 					if(isNeedPayment) {
 
 						if(strPaymentId.contentEquals("") || strReceiptId.contentEquals("") || strTotalPrice.contentEquals("")) {
 							
-							baOutStream.reset();
 
-							baOutStream.write("0".getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							baOutStream.put("result", "0");
+					baOutStream.put("message", "결제 정보가 없습니다.");
+					baOutStream.put("reservationId", strEmpty);
+					baOutStream.put("reservationInfo", strEmpty);
 
-							baOutStream.write("결제 정보가 없습니다.".getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
-
-							baOutStream.write(strEmpty.getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
-
-							baOutStream.write(strEmpty.getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
-
-							returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 							return;
 						}
 
@@ -3816,21 +3726,15 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 
 						if(strOrderState.contentEquals("1")) {
 
-							baOutStream.reset();
 
-							baOutStream.write("0".getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							baOutStream.put("result", "0");
+					baOutStream.put("message", "이미 승인된 결제건입니다.");
+					baOutStream.put("reservationId", strEmpty);
+					baOutStream.put("reservationInfo", strEmpty);
 
-							baOutStream.write("이미 승인된 결제건입니다.".getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
-
-							baOutStream.write(strEmpty.getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
-
-							baOutStream.write(strEmpty.getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
-
-							returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 							return;
 						}
 
@@ -3876,7 +3780,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 
 					isSuccess = true;
 
-					baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
+					baOutStream.put("result", Integer.toString(nRet));
 
 					printLog("A", "[STEP 2][SUCCESS] 예약 DB INSERT 성공" + " - nRet : " + nRet);
 
@@ -3910,7 +3814,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 
 				}else if(!resultCnt.contentEquals("0")){
 					nRet = 2;
-					baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
+					baOutStream.put("result", Integer.toString(nRet));
 				}
 			}		
 
@@ -4005,14 +3909,9 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 				strReservationInfo +=  "인원 수*" + strPeople + "*+";
 			}
 
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strMessage.getBytes(S_CHARSET));
-
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strReservationId.getBytes(S_CHARSET));
-			
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strReservationInfo.getBytes(S_CHARSET));
+			baOutStream.put("message", strMessage);
+				baOutStream.put("reservationId", strReservationId);
+				baOutStream.put("reservationInfo", strReservationInfo);
 
 			printLog("D","strMessage : " +strMessage);
 			printLog("D","strReservationId : " +strReservationId);
@@ -4538,8 +4437,9 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 예약처리 완료");
 
 				// =========================================================
 				// 앱에 예약 성공 응답 먼저 전송
-				// =========================================================
-				returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 
 				printLog("A", "[RESPONSE][SUCCESS] reservation_community_schedule 앱 응답 전송 완료"
 							+ " - reservationId : " + strReservationId
@@ -4888,23 +4788,16 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 
 			if(!isDbCommitted) {
 				try {
-					baOutStream.reset();
-
-					baOutStream.write("0".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
 
 					String strErrorMessage = e.getMessage() != null ? e.getMessage() : "예약 처리 중 오류가 발생했습니다.";
+					baOutStream.put("result", "0");
+					baOutStream.put("message", strErrorMessage);
+					baOutStream.put("reservationId", strEmpty);
+					baOutStream.put("reservationInfo", strEmpty);
 
-					baOutStream.write(strErrorMessage.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-
-					baOutStream.write(strEmpty.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-
-					baOutStream.write(strEmpty.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-
-					returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 
 				} catch(Exception responseException) {
 					printLog("A", "reservation_community_schedule response Exception : " + responseException.toString());
@@ -4927,9 +4820,9 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			}
 		}	
 	} else if(strSID.contentEquals("create_partner_payment")) {
-		String strUserId = getRequestParam(request, "UserId");
-		String strAptCode = getRequestParam(request, "AptCode");
-		String strPrice = getRequestParam(request, "Price");
+		String strUserId = getJsonParam(paramJson, "UserId");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strPrice = getJsonParam(paramJson, "Price");
 
 		if(strUserId == null) strUserId = "";
 		if(strAptCode == null) strAptCode = "";
@@ -4937,7 +4830,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 
 		strPrice = strPrice.replace("원", "").replace(",", "").trim();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject baOutStream = new JSONObject();
 
 		String strPaymentId = "0";
 		String strResult = "0";
@@ -5036,20 +4929,19 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			printLog("A", "create_partner_payment error : " + e.getMessage());
 		}
 
-		baOutStream.write(strResult.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("result", strResult);
 
-		baOutStream.write(strPaymentId.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("paymentId", strPaymentId);
 
-		baOutStream.write(strMessage.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("message", strMessage);
 
-		returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 	}else if(strSID.contentEquals("get_reservation_notice")){
-		String strCommunityType = getRequestParam(request,"CommunityType");	
-		String strAptCode = getRequestParam(request, "AptCode");		
-		String strMembershipId = getRequestParam(request, "MembershipId");
+		String strCommunityType = getJsonParam(paramJson,"CommunityType");	
+		String strAptCode = getJsonParam(paramJson, "AptCode");		
+		String strMembershipId = getJsonParam(paramJson, "MembershipId");
 
 		if(strMembershipId == null) strMembershipId = "";
 		if(strMembershipId.contentEquals("")){
@@ -5097,30 +4989,29 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			strReservationNotice = rs.getString("RESERVATION_INFORMATION") != null ? rs.getString("RESERVATION_INFORMATION") : "";
 		}
 				
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject baOutStream = new JSONObject();
 		
-		baOutStream.write(strTitle.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strReservationNotice.getBytes(S_CHARSET));
- 		baOutStream.write(COLUMN_DEL);
+		baOutStream.put("title", strTitle);
+		baOutStream.put("reservationNotice", strReservationNotice);
 
-		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-		returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 
 	}else if(strSID.contentEquals("get_community_available_seat")){
-		String strAptCode = getRequestParam(request, "AptCode");		
-		String strCommunityType = getRequestParam(request, "CommunityType");		
-		String strMembershipId = getRequestParam(request, "MembershipId");		
-		String strOptionId = getRequestParam(request, "OptionId");		
-		String strUserId = getRequestParam(request, "UserId");		
-		String strUUID = getRequestParam(request, "UUID");		
-		String strDong = getRequestParam(request, "UserDong");	
-		String strUserName 	= getRequestParam(request, "UserName");
-		String strHo = getRequestParam(request, "UserHo");
-		String strGender = getRequestParam(request, "Gender");
-		String strReservationId = getRequestParam(request, "ReservationId");
-		String strValidityDateFrom = getRequestParam(request, "ValidityDateFrom");
-		String strValidityDateTo = getRequestParam(request, "ValidityDateTo");
+		String strAptCode = getJsonParam(paramJson, "AptCode");		
+		String strCommunityType = getJsonParam(paramJson, "CommunityType");		
+		String strMembershipId = getJsonParam(paramJson, "MembershipId");		
+		String strOptionId = getJsonParam(paramJson, "OptionId");		
+		String strUserId = getJsonParam(paramJson, "UserId");		
+		String strUUID = getJsonParam(paramJson, "UUID");		
+		String strDong = getJsonParam(paramJson, "UserDong");	
+		String strUserName 	= getJsonParam(paramJson, "UserName");
+		String strHo = getJsonParam(paramJson, "UserHo");
+		String strGender = getJsonParam(paramJson, "Gender");
+		String strReservationId = getJsonParam(paramJson, "ReservationId");
+		String strValidityDateFrom = getJsonParam(paramJson, "ValidityDateFrom");
+		String strValidityDateTo = getJsonParam(paramJson, "ValidityDateTo");
 
 		// 20260305 
 		// 성별을 쓰는 시설이거나 회원권인경우는 
@@ -5242,7 +5133,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 		}
 
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject baOutStream = new JSONObject();
 		int nRemainingSeats = 0;
 
 		if(strMembershipId.contentEquals("") || strOptionId.contentEquals("")){
@@ -5373,10 +5264,8 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			// JSONArray를 문자열로 변환
 			String jsonString = jsonArray.toJSONString();
 					
-			baOutStream.write(jsonString.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(Integer.toString(nRemainingSeats).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
+			baOutStream.put("seatList", jsonArray);
+			baOutStream.put("remainingSeats", Integer.toString(nRemainingSeats));	
 			
 		}else{
 
@@ -5469,32 +5358,32 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			// JSONArray를 문자열로 변환
 			String jsonString = jsonArray.toJSONString();
 					
-			baOutStream.write(jsonString.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(Integer.toString(nRemainingSeats).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
+			baOutStream.put("seatList", jsonArray);
+			baOutStream.put("remainingSeats", Integer.toString(nRemainingSeats));	
 		}
 
-		returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 	}else if(strSID.contentEquals("reservation_guestroom")){
-		String strMembershipId = getRequestParam(request,"MembershipId");	
-		String strAptCode = getRequestParam(request, "AptCode");		
-		String strUserId = getRequestParam(request,"UserId");	
-		String strUserName = getRequestParam(request, "UserName");		
-		String strUserDong = getRequestParam(request,"UserDong");	
-		String strUserHo = getRequestParam(request, "UserHo");		
-		String strReservationUserName = getRequestParam(request, "ReservationUserName");
-		String strReservationUserPhone = getRequestParam(request, "ReservationUserPhone");
-		String strRoomNumber = getRequestParam(request, "RoomNumber");		
-		String strPrice = getRequestParam(request, "Price");		
-		String strStartDate = getRequestParam(request, "StartDate");
-		String strEndDate = getRequestParam(request, "EndDate");
-		String strOptions = getRequestParam(request, "MembershipOption");
-		String strUUID = getRequestParam(request, "UUID");
-		String strRequestReservationTime = getRequestParam(request, "ReservationTime");
-		String strRequestReservationChannel = getRequestParam(request, "ReservationChannel");
-		String strPaymentId = getRequestParam(request, "PaymentId");
-		String strReceiptId = getRequestParam(request, "ReceiptId");
+		String strMembershipId = getJsonParam(paramJson,"MembershipId");	
+		String strAptCode = getJsonParam(paramJson, "AptCode");		
+		String strUserId = getJsonParam(paramJson,"UserId");	
+		String strUserName = getJsonParam(paramJson, "UserName");		
+		String strUserDong = getJsonParam(paramJson,"UserDong");	
+		String strUserHo = getJsonParam(paramJson, "UserHo");		
+		String strReservationUserName = getJsonParam(paramJson, "ReservationUserName");
+		String strReservationUserPhone = getJsonParam(paramJson, "ReservationUserPhone");
+		String strRoomNumber = getJsonParam(paramJson, "RoomNumber");		
+		String strPrice = getJsonParam(paramJson, "Price");		
+		String strStartDate = getJsonParam(paramJson, "StartDate");
+		String strEndDate = getJsonParam(paramJson, "EndDate");
+		String strOptions = getJsonParam(paramJson, "MembershipOption");
+		String strUUID = getJsonParam(paramJson, "UUID");
+		String strRequestReservationTime = getJsonParam(paramJson, "ReservationTime");
+		String strRequestReservationChannel = getJsonParam(paramJson, "ReservationChannel");
+		String strPaymentId = getJsonParam(paramJson, "PaymentId");
+		String strReceiptId = getJsonParam(paramJson, "ReceiptId");
 
 		strMembershipId = strMembershipId != null ? strMembershipId.trim() : "";
 		strAptCode = strAptCode != null ? strAptCode.trim() : "";
@@ -6129,29 +6018,21 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 				printLog("A", "[TRANSACTION][END] reservation_guestroom autoCommit 원복 성공");
 			}
 
-			ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+			JSONObject baOutStream = new JSONObject();
 
-			baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			baOutStream.put("result", Integer.toString(nRet));
 
-			baOutStream.write(strMessage.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			baOutStream.put("message", strMessage);
 
-			baOutStream.write(strReservationId.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			baOutStream.put("reservationId", strReservationId);
 
-			baOutStream.write(strResultInfo.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			baOutStream.put("resultInfo", strResultInfo);
 
-			if(isNeedPayment && isPaymentSaved){
-				baOutStream.write(strPaymentId.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
-			}else{
-				baOutStream.write("".getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
-			}
+			baOutStream.put("paymentId", (isNeedPayment && isPaymentSaved) ? strPaymentId : "");
 
-			returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 
 			printLog( "A", "[RESPONSE][SUCCESS] reservation_guestroom 앱 응답 전송 완료"
 						+ " - reservationId : " + strReservationId
@@ -6244,24 +6125,17 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 
 					String strErrorMessage = e.getMessage() != null ? e.getMessage() : "게스트하우스 예약 처리 중 오류가 발생했습니다.";
 
-					ByteArrayOutputStream errorStream = new ByteArrayOutputStream();
+					JSONObject errorStream = new JSONObject();
 
-					errorStream.write("0".getBytes(S_CHARSET));
-					errorStream.write(COLUMN_DEL);
+					errorStream.put("result", "0");
+					errorStream.put("message", strErrorMessage);
+					errorStream.put("reservationId", "");
+					errorStream.put("resultInfo", "");
+					errorStream.put("paymentId", "");
 
-					errorStream.write(strErrorMessage.getBytes(S_CHARSET));
-					errorStream.write(COLUMN_DEL);
-
-					errorStream.write("".getBytes(S_CHARSET));
-					errorStream.write(COLUMN_DEL);
-
-					errorStream.write("".getBytes(S_CHARSET));
-					errorStream.write(COLUMN_DEL);
-
-					errorStream.write("".getBytes(S_CHARSET));
-					errorStream.write(COLUMN_DEL);
-
-					returnData(errorStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", errorStream);
+		returnJson(response, resJson);
 
 					printLog("A", "[RESPONSE][FAIL] reservation_guestroom 앱 실패 응답 전송 완료"
 								+ " - paymentId : " + strPaymentId
@@ -6322,12 +6196,12 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 			}
 		}
 	}else if(strSID.contentEquals("update_reservation_seat")){
-		String strAptCode = getRequestParam(request, "AptCode");
-		String strCommunityType = getRequestParam(request, "CommunityType");
-		String strUserId = getRequestParam(request,"UserId");
-		String strReservationId = getRequestParam(request,"ReservationId");
-		String strBeforeSeat = getRequestParam(request,"BeforeSeat");
-		String strSeat = getRequestParam(request,"Seat");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strCommunityType = getJsonParam(paramJson, "CommunityType");
+		String strUserId = getJsonParam(paramJson,"UserId");
+		String strReservationId = getJsonParam(paramJson,"ReservationId");
+		String strBeforeSeat = getJsonParam(paramJson,"BeforeSeat");
+		String strSeat = getJsonParam(paramJson,"Seat");
 
 		String strValidityDateFrom = "";
 		String strValidityDateTo = "";
@@ -6513,20 +6387,20 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 
 		}
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(Integer.toString(nResultRet).getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(RECORD_DEL);
-		returnData(baOutStream, outStream);
+		JSONObject baOutStream = new JSONObject();
+		baOutStream.put("result", Integer.toString(nResultRet));
+		resJson.put("RESULT", "SUCCESS");
+		resJson.put("DATA", baOutStream);
+		returnJson(response, resJson);
 
 	} else if(strSID.contentEquals("get_membership_list")) {
-		String strAptCode = getRequestParam(request, "AptCode");
-		String strUserId = getRequestParam(request, "UserId");
-		String strItemCount = getRequestParam(request, "ItemCount");
-		String strLimitCnt = getRequestParam(request, "LimitCnt");
-		String strDong = getRequestParam(request, "UserDong");
-		String strHo = getRequestParam(request, "UserHo");
-		String strUserName = getRequestParam(request, "UserName");
+		String strAptCode = getJsonParam(paramJson, "AptCode");
+		String strUserId = getJsonParam(paramJson, "UserId");
+		String strItemCount = getJsonParam(paramJson, "ItemCount");
+		String strLimitCnt = getJsonParam(paramJson, "LimitCnt");
+		String strDong = getJsonParam(paramJson, "UserDong");
+		String strHo = getJsonParam(paramJson, "UserHo");
+		String strUserName = getJsonParam(paramJson, "UserName");
 
 		String strQuery = "";
 		strQuery += " SELECT ";
@@ -7015,7 +6889,8 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 		rs = pstmt.executeQuery();
 		rsMetaData = rs.getMetaData();
 
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
 		String strCommunityType = "";
 		String strSecurity = "";
@@ -7064,6 +6939,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 
 			boolean isAdditionalAfterPurchase = false;
 
+			JSONObject jsonItem = new JSONObject();
 			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
 				String strData = rs.getString(nCol);
 				if(strData == null) strData = "";
@@ -7118,7 +6994,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 							strUseCountText = strMembershipName + " / " + strUseCountText;
 						}
 
-						baOutStream.write(strUseCountText.getBytes(S_CHARSET));
+						jsonItem.put(rsMetaData.getColumnLabel(nCol), strUseCountText);
 					} else if(nCol == 7 && !strData.isEmpty()) {
 
 						String placeValue = strData;
@@ -7127,18 +7003,17 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 							placeValue = "대관";
 						}
 
-						baOutStream.write(("예약 자리 : " + placeValue).getBytes(S_CHARSET));
+						jsonItem.put(rsMetaData.getColumnLabel(nCol), "예약 자리 : " + placeValue);
 
 						System.out.println("RAW_DATA = [" + placeValue + "]");
 
 					} else if(nCol == 7 && strData.isEmpty()) {
 
-						baOutStream.write(strMembershipName.getBytes(S_CHARSET));
+						jsonItem.put(rsMetaData.getColumnLabel(nCol), strMembershipName);
 
 					} else {
-						baOutStream.write(strData.getBytes(S_CHARSET));
+						jsonItem.put(rsMetaData.getColumnLabel(nCol), strData);
 					}
-					baOutStream.write(COLUMN_DEL);
 				} else if(nCol == 9) {
 					strCommunityType = strData;
 
@@ -7575,37 +7450,34 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 			}
 
 			// 기존 get_membership_list 응답 8개 뒤에 추가 응답값 write
-			baOutStream.write(strQRId.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("qrId", strQRId);
 
-			baOutStream.write(strQRSecurityCode.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("qrSecurityCode", strQRSecurityCode);
 
-			baOutStream.write(strSecurity.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("security", strSecurity);
 
-			baOutStream.write(strActualStartTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("actualStartTime", strActualStartTime);
 
-			baOutStream.write(strActualEndTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("actualEndTime", strActualEndTime);
 
-			baOutStream.write(strState.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			jsonItem.put("state", strState);
 
-			baOutStream.write(RECORD_DEL);
+			dataArr.add(jsonItem);
 		}
-		returnData(baOutStream, outStream);
+		resJson.put("RESULT", "SUCCESS");
+		jsonData.put("list", dataArr);
+		resJson.put("DATA", jsonData);
+		returnJson(response, resJson);
 	}
 
 }catch(Exception e) {
-	ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 	String errMsg = "Exception Msg = " + e.getMessage();
-	baOutStream.write(errMsg.getBytes(S_CHARSET));
 	printLog("A", " ###### errMsg  = #####" + errMsg);
 
-	// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-	returnData(baOutStream, outStream);
+	resJson.put("RESULT", "FAIL");
+	resJson.put("ERRMSG", e.getMessage());
+	// 데이터 조립한 후, 클라이언트로 전송..
+	returnJson(response, resJson);
 }
 finally {
 	// Release a database resources
