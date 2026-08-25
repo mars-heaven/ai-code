@@ -4695,6 +4695,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 8 푸시 처리 종료");
 		}
 
 		// writeColumn(baOutStream, strQRId); // 16
+		writeColumnDel(baOutStream);
 
 		writeColumn(baOutStream, strQRSecurityCode); // 17
 
