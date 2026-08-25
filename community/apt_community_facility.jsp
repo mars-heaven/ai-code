@@ -33,252 +33,15 @@
 <%@ page import="java.util.HashMap" %>
 
 
-<%!
-
-	public String getRequestParam(IssacWeb issacweb, HttpServletRequest request, String strKey) {
-		if(strKey == null || strKey.contentEquals("")) {
-			printLog("A", "getRequestParam strKey null");
-			return "";
-		}
-
-		String strValue = "";
-		if(isDev() == true) {
-			strValue = request.getParameter(strKey);
-			if(strValue == null) strValue = "";
-			try {
-				//개발서버만 UTF-8로 한번더 전환
-				strValue = new String(strValue.getBytes("8859_1"), S_CHARSET);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		} else {
-			strValue = issacweb.getParameter(strKey);
-			if(strValue == null) strValue = "";
-		}
-
-		return strValue;
-	}
-
-
-	/**
-	 * 빌리진아이 데이터 전송 포맷[ 데이터길이(4자리) + 데이터 ] 에 맞게 조합한 후, 클라이언트로 전송..
-	 */
-	public void returnData(IssacWeb issacweb, ByteArrayOutputStream baOutStream, OutputStream outStream) {
-		if(baOutStream == null || outStream == null) {
-			return;
-		}
-
-		try {
-
-			byte[] baSendData = null;
-			if(isDev() == true) {
-				baSendData = baOutStream.toByteArray();
-			} else {
-				if (baOutStream.size() == 0) {
-					// 빈값 처리
-					baOutStream.write(" ".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-					baOutStream.write(RECORD_DEL);
-				}
-				ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-				baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-				baSendData = baEncryptOutStream.toByteArray();
-			}
-
-			int nSendDataLength = baSendData.length;
-
-			byte[] baSendDataLength = new byte[4];
-			baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-			baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-			baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-			baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-			outStream.write(baSendDataLength, 0, 4);
-			outStream.write(baSendData, 0, nSendDataLength);
-			outStream.flush();
-			outStream.close();
-		} catch (Exception e) {
-
-			try {
-
-				String errMsg = "Exceptino Msg = " + e.getMessage();
-				baOutStream.write(errMsg.getBytes(S_CHARSET));
-
-				byte[] baSendData = null;
-				if(isDev() == true) {
-					baSendData = baOutStream.toByteArray();
-				} else {
-					ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-					baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-					baSendData = baEncryptOutStream.toByteArray();
-				}
-
-				int nSendDataLength = baSendData.length;
-
-				byte[] baSendDataLength = new byte[4];
-				baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-				baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-				baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-				baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-				outStream.write(baSendDataLength, 0, 4);
-				outStream.write(baSendData, 0, nSendDataLength);
-				outStream.flush();
-				outStream.close();
-			} catch (Exception ex) {
-			}
-		}
-	}
-
-	/**
-	 * mysql \' or \\  이스케이프 문자 처리
-	 */
-	public static String isEscapeChar(String strContent) {
-		if(strContent == null || strContent.contentEquals("")) {
-			return "";
-		}
-		String strReplaceContent = strContent;
-		if(strContent.contains("\'")) {
-			strReplaceContent = strReplaceContent.replace("\'", "\'\'");
-		}
-		if(strContent.contains("\\")) {
-			strReplaceContent = strReplaceContent.replace("\\", "\\\\");
-		}
-		return strReplaceContent;
-	}
-
-
-	// 휴일 데이터 클래스
-	 static class Holiday {
-        int repeatType;
-        int dayOfWeek;
-        int dayOfMonth;
-        int specificType;
-        String specialDay;
-
-        Holiday(int repeatType, int dayOfWeek, int dayOfMonth, int specificType, String specialDay) {
-            this.repeatType = repeatType;
-            this.dayOfWeek = dayOfWeek;
-            this.dayOfMonth = dayOfMonth;
-            this.specificType = specificType;
-            this.specialDay = specialDay;
-        }
-    }
-
-	// 오늘이 휴일인지 체크하는 메서드
-	// 휴일 모델을 넣고 오늘 요일, 일, 주를 넣어주면
-	// 휴일에 repeatType을 기준으로 해당하는게 있는지 확인하는 방식
-    private static boolean isTodayHoliday(Holiday holiday, int todayDayOfWeek, int todayDayOfMonth, int weekOfMonth) {
-        switch (holiday.repeatType) {
-            case WEEKLY_REPEAT:
-                return holiday.dayOfWeek == todayDayOfWeek;
-            case WEEK_OF_MONTH_1:
-            case WEEK_OF_MONTH_2:
-            case WEEK_OF_MONTH_3:
-            case WEEK_OF_MONTH_4:
-            case WEEK_OF_MONTH_5:
-                return holiday.dayOfWeek == todayDayOfWeek && holiday.repeatType == weekOfMonth;
-            case MONTHLY_REPEAT:
-                return holiday.dayOfMonth == todayDayOfMonth;
-            case DAILY_REPEAT:
-                return true;
-            case HOLIDAY_REPEAT:
-                // 구체적인 공휴일 날짜와 비교하는 로직 필요
-                return false;
-            default:
-                return false;
-        }
-    }
-	
-	// 임시휴무일 체크
-	private static boolean isTodayTempHoliday(Holiday holiday, String strSelectDay) {
-		if(holiday == null || strSelectDay == null || strSelectDay.contentEquals("")) {
-			return false;
-		}
-		
-		if(holiday.specificType != SPECIFIC_HOLIDAY_TEMP) {
-			return false;
-		}
-		
-		if(holiday.specialDay.contentEquals(strSelectDay)) {
-			return true;
-		}
-
-		return false;
-	}
-
-	// 예약건 데이터 클래스
-	static class Reservation {    
-        String strTime;
-        String strPlace;
-
-        Reservation(String Place, String Time) {
-            this.strPlace = Place;
-            this.strTime = Time;
-        }
-
-		public String getPlace(){
-            return strPlace;
-		}
-
-		public String getTime(){
-			return strTime;
-		}
-    }
-
-	
-	private String getCommunityQuery(String aptCode, String strGender) {
-		return "SELECT COMMUNITY_TYPE, TITLE, " +
-			"CONCAT(SUBSTRING(START_TIME,1,2), ':', SUBSTRING(START_TIME, 3,2), ' ~ ' , SUBSTRING(END_TIME,1,2), ':', SUBSTRING(END_TIME,3,2)) as TIME, " +
-			"IMAGE, OPERATION_HOURS, COMMUNITY_STATE " +
-			"FROM APT_COMMUNITY " +
-			"WHERE APT_CODE = '" + aptCode + "' AND PARENT_ID IS NULL AND COMMUNITY_STATE != '0' GROUP BY COMMUNITY_TYPE ORDER BY INAPP_ORDER, COMMUNITY_TYPE, GENDER ";
-	}
-
-
-	private String getHolidaysQuery(String aptCode, String communityType) {
-		return "SELECT SPECIFIC_REPEAT_TYPE, SPECIFIC_DAY_OF_THE_WEEK, SPECIFIC_DAY_OF_THE_MONTH, SPECIFIC_TYPE, SPECIAL_DAY " +
-			"FROM APT_COMMUNITY_SPECIFIC " +
-			"WHERE APT_CODE = '" + aptCode + "' AND COMMUNITY_TYPE = '" + communityType + "' AND (SPECIFIC_TYPE = '0' OR SPECIFIC_TYPE = '3') " +
-			"order by SPECIFIC_TYPE, SPECIFIC_REPEAT_TYPE, SPECIFIC_DAY_OF_THE_WEEK ASC ";
-	}	
-
-		
-	private String extractValue(String jsonString, String key, String field) {
-		// JSONParser를 사용하여 JSON 문자열을 파싱
-		JSONParser parser = new JSONParser();
-		try {
-			JSONObject jsonObject = (JSONObject) parser.parse(jsonString);
-
-			// 주어진 key에 해당하는 JSONObject를 가져옴
-			JSONObject targetObject = (JSONObject) jsonObject.get(key);
-			if (targetObject != null) {
-				// 주어진 field에 해당하는 값을 가져옴
-				Object value = targetObject.get(field);
-				return value != null ? value.toString() : null; // null 체크 후 문자열로 변환
-			} else {
-				System.out.println("Key not found: " + key);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		return ""; // 값이 없거나 오류가 발생한 경우 null 반환
-	}
-	
-%>
+<%@ include file="./apt_community_common.jsp" %>
 
 <%
 Connection 			conn = null;			// DB Connection Object
 PreparedStatement 	pstmt = null;			// JDBC PreparedStatement Object
 ResultSet 			rs = null;	 			// Query Result Set Object
 
-ResultSetMetaData 	rsMetaData = null;
 IssacWeb					m_issacweb = null;
 
-ResultSet 			rs_votecount = null;	 		// Query Result Set Object
-ResultSet 			rs_community = null;	 		// Query Result Set Object
 
 // Clear out's buffer
 out.clearBuffer();
@@ -295,9 +58,7 @@ try {
 	conn = DriverManager.getConnection(dbUrl, dbUserId, dbUserPasswd);
 
 	// 운영서버이면 암호화 객체 생성
-	if(isDev() == false) {
-		m_issacweb = new IssacWeb(request);
-	}
+	m_issacweb = createIssacWeb(request);
 	// Get Parameter - SID = query 구분.
 	String strSID = getRequestParam(m_issacweb, request, "SID");
 	printLog("A", "SID : " + strSID);
@@ -307,69 +68,17 @@ try {
 		String strAptCode = getRequestParam(m_issacweb, request, "AptCode");
 		String strUserId = getRequestParam(m_issacweb, request, "UserId");
 
-		String strDongHoQuery = "";
-		strDongHoQuery += "SELECT USER_DONG, USER_HO, USER_NAME ";
-		strDongHoQuery += " FROM USER_INFO ";
-		strDongHoQuery += " WHERE 1 = 1 ";
-		strDongHoQuery += " AND USER_ID ='" + strUserId + "' ";
-		strDongHoQuery += " AND APT_CODE = " + strAptCode + " ";
+		// 커뮤니티 사용자 정보 -> 입주민 정보 순으로 성별 조회
+		String strGender = getUserGender(conn, strAptCode, strUserId);
 
-		printLog("D","strDongHoQuery : "+ strDongHoQuery);
-
-	
-		pstmt = conn.prepareStatement(strDongHoQuery);
-		rs = pstmt.executeQuery();
-		String strDong = "";
-		String strHo = "";
-		String strUserName = "";
-		if(rs.next()){
-			strDong = rs.getString(1);
-			strHo = rs.getString(2);
-			strUserName = rs.getString(3);
-		}
-
-		String strGenderQuery = "";
-		strGenderQuery += "SELECT GENDER ";
-		strGenderQuery += " FROM APT_COMMUNITY_USER_INFO ";	
-		strGenderQuery += " WHERE USER_ID = '" + strUserId +"' ";				
-		
-
-		pstmt = conn.prepareStatement(strGenderQuery);
-		rs = pstmt.executeQuery();
-		String strGender = "";
-		if(rs.next()){
-			if(rs.getString(1) != null){
-				strGender = rs.getString(1);
-			}
-		}
-
-		if(strGender == null || strGender.contentEquals("") || strGender.contentEquals("0")){
-			strGenderQuery = "";
-			strGenderQuery += "SELECT GENDER ";
-			strGenderQuery += " FROM RESIDENT_MEMBER_INFO ";	
-			strGenderQuery += " WHERE APT_CODE = " + strAptCode + " ";
-			strGenderQuery += " AND DONG = '" + strDong +"' ";
-			strGenderQuery += " AND HO = '" + strHo + "' ";
-			strGenderQuery += " AND NAME = '" + strUserName + "' ";
-
-			pstmt = conn.prepareStatement(strGenderQuery);
-			rs = pstmt.executeQuery();
-			strGender = "";
-			if(rs.next()){
-				if(rs.getString(1) != null){
-					strGender = rs.getString(1);
-				}
-			}
-		}
 
 		// 커뮤니티 시설을 조회하는 쿼리
-		String strQuery = getCommunityQuery(strAptCode, strGender);		
+		String strQuery = getCommunityQuery(strAptCode);		
 		printLog("D","strQuery : " + strQuery);
 
 		pstmt = conn.prepareStatement(strQuery);
 		rs = pstmt.executeQuery();
 
-		rsMetaData = rs.getMetaData();
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
@@ -387,45 +96,7 @@ try {
 			if(strType == null || strType.isEmpty()){
 				strType = "0";
 			}else{
-				String strHolidaysQuery = getHolidaysQuery(strAptCode,strType);
-
-				pstmt = conn.prepareStatement(strHolidaysQuery);
-				rs_community = pstmt.executeQuery();
-
-				rsMetaData = rs_community.getMetaData();
-				// 휴무일을 조합하는 문자열
-				String strHolidays = "";
-
-
-				// 자바 1.7이전 버전에서는 switch문에 문자열이 안 됨...
-				// int 타입으로 변경
-				for(int nHoliDaysRow = 0; rs_community.next(); nHoliDaysRow++) {
-					String strRepeatType =  rs_community.getString(1);
-					String strHoliDaysDayOfWeek = rs_community.getString(2);
-					String strHolidaysDayOfMonth = rs_community.getString(3);
-					String strSpecificType = rs_community.getString(4);
-					String strSpecialDay = rs_community.getString(5);
-					int nSpecificRepeatType = -1;
-					int nHoliDaysDayOfWeek = -1;
-					int nHolidaysDayOfMonth = -1;
-					int nSpecificType = -1;
-					if(strRepeatType != null && !strRepeatType.contentEquals("")){
-						nSpecificRepeatType = Integer.parseInt(strRepeatType);
-					}
-					if(strHoliDaysDayOfWeek != null && !strHoliDaysDayOfWeek.contentEquals("")){
-						nHoliDaysDayOfWeek = Integer.parseInt(strHoliDaysDayOfWeek);
-					}
-					if(strHolidaysDayOfMonth != null && !strHolidaysDayOfMonth.contentEquals("")){
-						nHolidaysDayOfMonth = Integer.parseInt(strHolidaysDayOfMonth);
-					}
-					if(strSpecificType != null && !strSpecificType.contentEquals("")){
-						nSpecificType = Integer.parseInt(strSpecificType);
-					}
-					if(strSpecialDay == null) {
-						strSpecialDay = "";
-					}
-					holidays.add(new Holiday(nSpecificRepeatType, nHoliDaysDayOfWeek, nHolidaysDayOfMonth, nSpecificType, strSpecialDay)); // 매주 월요일					
-				}
+				holidays = loadHolidays(conn, strAptCode, strType);
 
 			}
 
@@ -444,28 +115,8 @@ try {
 			}
 			// OPERATION_HOURS 데이터가 있으면 사용
 			if(!strOperationHours.contentEquals("")) {
-				SimpleDateFormat sdfOperationHours = new SimpleDateFormat("yyyyMMdd");
-				String currentDateTime = sdfOperationHours.format(new Date());
-				Date dateOperationHours = sdfOperationHours.parse(currentDateTime);
-				Calendar calendarOperationHours = Calendar.getInstance();
-				calendarOperationHours.setTime(dateOperationHours);
-
-				// 요일 확인 (1: 일요일, 2: 월요일, ..., 7: 토요일)
-				int dayOfWeekOperationHours = calendarOperationHours.get(Calendar.DAY_OF_WEEK);
-
-				// WEEKDAY 또는 WEEKEND에 따라 값 추출
-				String strStartTime = "";
-				String strEndTime = "";
-				if (dayOfWeekOperationHours == Calendar.SATURDAY || dayOfWeekOperationHours == Calendar.SUNDAY) {
-					// 주말인 경우
-					strStartTime = extractValue(strOperationHours, "WEEKEND", "start");
-					strEndTime = extractValue(strOperationHours, "WEEKEND", "end");
-				} else {
-					// 평일인 경우
-					strStartTime = extractValue(strOperationHours, "WEEKDAY", "start");
-					strEndTime = extractValue(strOperationHours, "WEEKDAY", "end");
-				}
-				strTime = strStartTime.substring(0, 2) + ":" + strStartTime.substring(2, 4) + " ~ " + strEndTime.substring(0, 2) + ":" + strEndTime.substring(2, 4);
+				// 오늘 요일 기준 운영시간(HH:mm ~ HH:mm)
+				strTime = getOperationTimeText(strOperationHours, null);
 			}
 
 
@@ -551,20 +202,14 @@ try {
 			}
 
 			
-			baOutStream.write(strType.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strTitle.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strState.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strStateTitle.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strImage.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strType);
+			writeColumn(baOutStream, strTitle);
+			writeColumn(baOutStream, strTime);
+			writeColumn(baOutStream, strState);
+			writeColumn(baOutStream, strStateTitle);
+			writeColumn(baOutStream, strImage);
 
-			baOutStream.write(RECORD_DEL);
+			writeRecord(baOutStream);
 
 
 		}
@@ -599,7 +244,6 @@ try {
 		pstmt = conn.prepareStatement(strQuery);
 		rs = pstmt.executeQuery();
 
-		rsMetaData = rs.getMetaData();
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 		String strTitle = "";
@@ -635,28 +279,8 @@ try {
 			if(strOperationHours == null) strOperationHours = "";
 			// OPERATION_HOURS 데이터가 있으면 사용
 			if(!strOperationHours.contentEquals("")) {
-				SimpleDateFormat sdfOperationHours = new SimpleDateFormat("yyyyMMdd");
-				String currentDateTime = sdfOperationHours.format(new Date());
-				Date dateOperationHours = sdfOperationHours.parse(currentDateTime);
-				Calendar calendarOperationHours = Calendar.getInstance();
-				calendarOperationHours.setTime(dateOperationHours);
-
-				// 요일 확인 (1: 일요일, 2: 월요일, ..., 7: 토요일)
-				int dayOfWeekOperationHours = calendarOperationHours.get(Calendar.DAY_OF_WEEK);
-
-				// WEEKDAY 또는 WEEKEND에 따라 값 추출
-				String strStartTime = "";
-				String strEndTime = "";
-				if (dayOfWeekOperationHours == Calendar.SATURDAY || dayOfWeekOperationHours == Calendar.SUNDAY) {
-					// 주말인 경우
-					strStartTime = extractValue(strOperationHours, "WEEKEND", "start");
-					strEndTime = extractValue(strOperationHours, "WEEKEND", "end");
-				} else {
-					// 평일인 경우
-					strStartTime = extractValue(strOperationHours, "WEEKDAY", "start");
-					strEndTime = extractValue(strOperationHours, "WEEKDAY", "end");
-				}
-				strTime = strStartTime.substring(0, 2) + ":" + strStartTime.substring(2, 4) + " ~ " + strEndTime.substring(0, 2) + ":" + strEndTime.substring(2, 4);
+				// 오늘 요일 기준 운영시간(HH:mm ~ HH:mm)
+				strTime = getOperationTimeText(strOperationHours, null);
 			}
 		}
 
@@ -667,7 +291,6 @@ try {
 		pstmt = conn.prepareStatement(strHolidaysQuery);
 		rs = pstmt.executeQuery();
 
-		rsMetaData = rs.getMetaData();
 		// 휴무일을 조합하는 문자열
 		String strHolidays = "";
 		boolean isPublicHolidays = false; 
@@ -677,31 +300,11 @@ try {
 		// 자바 1.7이전 버전에서는 switch문에 문자열이 안 됨...
 		// int 타입으로 변경
 		for(int nRow = 0; rs.next(); nRow++) {
-			String strRepeatType =  rs.getString(1);
-			String strHoliDaysDayOfWeek = rs.getString(2);
-			String strHolidaysDayOfMonth = rs.getString(3);
-			String strSpecificType = rs.getString(4);
-			String strSpecialDay = rs.getString(5);
-			int nSpecificRepeatType = -1;
-			int nHoliDaysDayOfWeek = -1;
-			int nHolidaysDayOfMonth = -1;
-			int nSpecificType = -1;
-			if(strRepeatType != null && !strRepeatType.contentEquals("")){
-				nSpecificRepeatType = Integer.parseInt(strRepeatType);
-			}
-			if(strHoliDaysDayOfWeek != null && !strHoliDaysDayOfWeek.contentEquals("")){
-				nHoliDaysDayOfWeek = Integer.parseInt(strHoliDaysDayOfWeek);
-			}
-			if(strHolidaysDayOfMonth != null && !strHolidaysDayOfMonth.contentEquals("")){
-				nHolidaysDayOfMonth = Integer.parseInt(strHolidaysDayOfMonth);
-			}
-			if(strSpecificType != null && !strSpecificType.contentEquals("")){
-				nSpecificType = Integer.parseInt(strSpecificType);
-			}
-			if(strSpecialDay == null) {
-				strSpecialDay = "";
-			}
-        	holidays.add(new Holiday(nSpecificRepeatType, nHoliDaysDayOfWeek, nHolidaysDayOfMonth, nSpecificType, strSpecialDay)); // 매주 월요일
+			Holiday holiday = createHolidayFromResultSet(rs);
+			int nSpecificRepeatType = holiday.repeatType;
+			int nHoliDaysDayOfWeek = holiday.dayOfWeek;
+			String strHolidaysDayOfMonth = holiday.dayOfMonth < 0 ? "" : Integer.toString(holiday.dayOfMonth);
+        	holidays.add(holiday); // 매주 월요일
 			// 휴무일 코드 값을 한글로 변환해서 사용자에게 보여준 코드
 			switch (nSpecificRepeatType) {
 				case WEEKLY_REPEAT: // 매주
@@ -886,30 +489,20 @@ try {
 
 		printLog("D"," strInfo : " + strInfo);
 		// 타이틀, 상태, 지도, 상세정보
-		baOutStream.write(strTitle.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strState.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strStateTitle.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strImage.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMap.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strInfo.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strServiceType.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strDescription.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strTitle);
+		writeColumn(baOutStream, strState);
+		writeColumn(baOutStream, strStateTitle);
+		writeColumn(baOutStream, strImage);
+		writeColumn(baOutStream, strMap);
+		writeColumn(baOutStream, strInfo);
+		writeColumn(baOutStream, strServiceType);
+		writeColumn(baOutStream, strDescription);
 		if(!strGender.contentEquals("0")){
 			strGender = "1";
 		}
-		baOutStream.write(strGender.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strSecurity.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);		
-		baOutStream.write(RECORD_DEL);
+		writeColumn(baOutStream, strGender);
+		writeColumn(baOutStream, strSecurity);
+		writeRecord(baOutStream);
 
 
 
@@ -994,20 +587,14 @@ try {
 
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(strMaxDay.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strSecurityType.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMap.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		//baOutStream.write(strSelfReservationFlag.getBytes(S_CHARSET));
-		//baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strReservationStandardDay.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMinConsecutiveReservation.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMaxConsecutiveReservation.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strMaxDay);
+		writeColumn(baOutStream, strSecurityType);
+		writeColumn(baOutStream, strMap);
+		//writeText(baOutStream, strSelfReservationFlag);
+		//writeColumnDel(baOutStream);
+		writeColumn(baOutStream, strReservationStandardDay);
+		writeColumn(baOutStream, strMinConsecutiveReservation);
+		writeColumn(baOutStream, strMaxConsecutiveReservation);
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(m_issacweb, baOutStream, outStream);
 
@@ -1059,59 +646,8 @@ try {
 
 		if(strGender.contentEquals("0")){
 
-			String strUserGenderQuery = "";
-			strUserGenderQuery += " SELECT GENDER ";
-			strUserGenderQuery += " FROM APT_COMMUNITY_USER_INFO ";
-			strUserGenderQuery += " WHERE USER_ID = '" + strUserId + "' ";
-			strUserGenderQuery += " AND APT_CODE = '" + strAptCode + "' ";
-
-			printLog("A","strUserGenderQuery : " + strUserGenderQuery);
-
-			pstmt = conn.prepareStatement(strUserGenderQuery);
-			rs = pstmt.executeQuery();
-
-
-			if(rs.next()){
-				strGender = rs.getString(1);
-			}
-			if(strGender.contentEquals("0")){
-				String strDongHoQuery = "";
-				strDongHoQuery += "SELECT USER_DONG, USER_HO, USER_NAME ";
-				strDongHoQuery += " FROM USER_INFO ";
-				strDongHoQuery += " WHERE 1 = 1 ";
-				strDongHoQuery += " AND USER_ID ='" + strUserId + "' ";
-				strDongHoQuery += " AND APT_CODE = " + strAptCode + " ";
-
-				printLog("D","strDongHoQuery : "+ strDongHoQuery);
-
-			
-				pstmt = conn.prepareStatement(strDongHoQuery);
-				rs = pstmt.executeQuery();
-				String strDong = "";
-				String strHo = "";
-				String strUserName = "";
-				if(rs.next()){
-					strDong = rs.getString(1);
-					strHo = rs.getString(2);
-					strUserName = rs.getString(3);
-				}
-
-				String strGenderQuery = "";
-				strGenderQuery += "SELECT GENDER ";
-				strGenderQuery += " FROM RESIDENT_MEMBER_INFO ";	
-				strGenderQuery += " WHERE APT_CODE = " + strAptCode + " ";
-				strGenderQuery += " AND DONG = '" + strDong +"' ";
-				strGenderQuery += " AND HO = '" + strHo + "' ";
-				strGenderQuery += " AND NAME = '" + strUserName + "' ";
-
-				pstmt = conn.prepareStatement(strGenderQuery);
-				rs = pstmt.executeQuery();
-				if(rs.next()){
-					if(rs.getString(1) != null){
-						strGender = rs.getString(1);
-					}
-				}
-			}
+			// 커뮤니티 사용자 정보 -> 입주민 정보 순으로 성별 조회
+			strGender = nvl(getUserGender(conn, strAptCode, strUserId), strGender);
 		}
 
 		if(strMembershipId != null && !strMembershipId.contentEquals("")){
@@ -1172,7 +708,7 @@ try {
 		}
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(strMapURL.getBytes(S_CHARSET));
+		writeText(baOutStream, strMapURL);
 
 		returnData(m_issacweb, baOutStream, outStream);
 		
@@ -1206,8 +742,7 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 		
-		baOutStream.write(strImage.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strImage);
 	
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(m_issacweb, baOutStream, outStream);
@@ -1223,38 +758,22 @@ try {
 		pstmt = conn.prepareStatement(strRoomNumberQuery);
 		rs = pstmt.executeQuery();
 
-		rsMetaData = rs.getMetaData();
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		for(int nRow = 0; rs.next(); nRow++) {
-			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
-				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
-			}
-			baOutStream.write(RECORD_DEL);
-		}
+		writeResultSet(baOutStream, rs);
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(m_issacweb, baOutStream, outStream);
 
 	}
 
 }catch(Exception e) {
-	ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-	String errMsg = "Exception Msg = " + e.getMessage();
-	baOutStream.write(errMsg.getBytes(S_CHARSET));
-	printLog("A", " ###### errMsg  = #####" + errMsg);
-
-	// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-	returnData(m_issacweb, baOutStream, outStream);
+	// 예외 메시지를 빌리진아이 포맷으로 전송
+	sendError(m_issacweb, e, outStream);
 }
 finally {
 	// Release a database resources
-	if(rs != null) { try { rs.close(); } catch(Exception ignore) {} }
-	if(pstmt != null) { try { pstmt.close(); } catch(Exception ignore) {} }
-	if(conn != null) { try { conn.close(); } catch(Exception ignore) {} }
+	closeQuietly(rs, pstmt, conn);
 }
 %>
 

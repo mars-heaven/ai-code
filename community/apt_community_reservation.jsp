@@ -45,462 +45,9 @@
 <%@ page import="org.apache.http.entity.StringEntity" %>
 <%@ include file="./apt_global_payment.jsp" %>
 
+<%@ include file="./apt_community_common.jsp" %>
+
 <%!
-	public String getRequestParam(HttpServletRequest request, String strKey) {
-		if(strKey == null || strKey.contentEquals("")) {
-			printLog("A", "getRequestParam strKey null");
-			return "";
-		}
-		
-		String strValue = request.getParameter(strKey);
-		if(strValue == null) strValue = "";
-
-		try {
-			strValue = new String(strValue.getBytes("8859_1"), S_CHARSET);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		
-		return strValue;
-	}
-	
-	/**
-	 * 빌리진아이 데이터 전송 포맷[ 데이터길이(4자리) + 데이터 ] 에 맞게 조합한 후, 클라이언트로 전송..
-	 */
-	public void returnData(ByteArrayOutputStream baOutStream, OutputStream outStream) {
-		if(baOutStream == null || outStream == null) {
-			return;
-		}
-
-		try {
-			byte[] baSendData = null;
-			baSendData = baOutStream.toByteArray();
-
-			int nSendDataLength = baSendData.length;
-			
-			byte[] baSendDataLength = new byte[4];
-			baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);		
-			baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-			baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-			baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-			outStream.write(baSendDataLength, 0, 4);
-			outStream.write(baSendData, 0, nSendDataLength);
-			outStream.flush();
-			outStream.close();
-		} catch (Exception e) {
-			try {
-				String errMsg = "Exceptino Msg = " + e.getMessage();
-				baOutStream.write(errMsg.getBytes(S_CHARSET));
-			
-				byte[] baSendData = null;
-				baSendData = baOutStream.toByteArray();
-	
-				int nSendDataLength = baSendData.length;
-				
-				byte[] baSendDataLength = new byte[4];
-				baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);		
-				baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-				baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-				baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-			
-				outStream.write(baSendDataLength, 0, 4);
-				outStream.write(baSendData, 0, nSendDataLength);
-				outStream.flush();
-				outStream.close();
-			} catch (Exception ex) {
-			}
-		}
-	}
-
-	/* 로그파일 생성
-	 * 결제 처리중 실패시 로그 남김(월별 파일 생성).
-	 */
-	public void writeLogFile(String strLog) {
-
-		PrintWriter writer = null;
-		try {
-			SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-			Date date = new Date();
-			String strDate = dateFormat.format(date);
-			String strFileName = strDate.substring(0, 7) + ".txt";		// 월별로 생성
-			
-			String strWebrootPath = getServletContext().getRealPath("/");
-			strWebrootPath = strWebrootPath.replaceAll("\\\\", "/");
-			String strSavePath = strWebrootPath + "villizinei/file/payerror/";
-
-			String strFilePath = strSavePath + strFileName;
-
-			File file = new File(strFilePath);
-			if(!file.exists()) {
-				file.createNewFile();
-          }
-
-			FileWriter fw = new FileWriter(file, true);		// 이어쓰기
-			writer = new PrintWriter(fw);
-
-			writer.write("[" + strDate + "] " + strLog + "\n");
-			
-			writer.close();
-
-		} catch(IOException ioe) {
-
-		} finally {
-			try {
-				writer.close();
-			} catch(Exception e) {
-				
-			}
-		}
-	}
-		
-	public String convDateFormat(String strDate) {
-		if(strDate == null || strDate.contentEquals("")) {
-			return "";
-		}
-		
-		String strConvDate = "";
-		
-		try {
-			SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX");
-			Date date = dateFormat.parse(strDate);
-			dateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
-			strConvDate = dateFormat.format(date);
-			printLog("D", "convDateFormat : " + strDate + " => " + strConvDate); 
-		} catch (Exception ex) {
-
-		}
-		return strConvDate;
-	}
-
-	// 휴일 데이터 클래스
-	 static class Holiday {
-        int repeatType;
-        int dayOfWeek;
-        int dayOfMonth;
-        int specificType;
-        String specialDay;
-
-        Holiday(int repeatType, int dayOfWeek, int dayOfMonth, int specificType, String specialDay) {
-            this.repeatType = repeatType;
-            this.dayOfWeek = dayOfWeek;
-            this.dayOfMonth = dayOfMonth;
-            this.specificType = specificType;
-            this.specialDay = specialDay;
-        }
-    }
-
-	// 오늘이 휴일인지 체크하는 메서드
-	// 휴일 모델을 넣고 오늘 요일, 일, 주를 넣어주면
-	// 휴일에 repeatType을 기준으로 해당하는게 있는지 확인하는 방식
-    private static boolean isTodayHoliday(Holiday holiday, int todayDayOfWeek, int todayDayOfMonth, int weekOfMonth) {
-        switch (holiday.repeatType) {
-            case WEEKLY_REPEAT:
-                return holiday.dayOfWeek == todayDayOfWeek;
-            case WEEK_OF_MONTH_1:
-            case WEEK_OF_MONTH_2:
-            case WEEK_OF_MONTH_3:
-            case WEEK_OF_MONTH_4:
-            case WEEK_OF_MONTH_5:
-                return holiday.dayOfWeek == todayDayOfWeek && holiday.repeatType == weekOfMonth;
-            case MONTHLY_REPEAT:
-                return holiday.dayOfMonth == todayDayOfMonth;
-            case DAILY_REPEAT:
-                return true;
-            case HOLIDAY_REPEAT:
-                // 구체적인 공휴일 날짜와 비교하는 로직 필요
-                return false;
-            default:
-                return false;
-        }
-    }
-	
-	// 임시휴무일 체크
-	private static boolean isTodayTempHoliday(Holiday holiday, String strSelectDay) {
-		if(holiday == null || strSelectDay == null || strSelectDay.contentEquals("")) {
-			return false;
-		}
-		
-		if(holiday.specificType != SPECIFIC_HOLIDAY_TEMP) {
-			return false;
-		}
-		
-		if(holiday.specialDay.contentEquals(strSelectDay)) {
-			return true;
-		}
-		return false;
-	}
-
-	// 날짜 포맷 변환 메서드
-	// 20240705 피그마 기준 yy.MM,dd(E)
-    public static String formatDate(String inputDate) {
-        SimpleDateFormat inputFormat = new SimpleDateFormat("yyyyMMdd");
-        SimpleDateFormat outputFormat = new SimpleDateFormat("yy.MM.dd(E)", new Locale("ko", "KR"));
-        Date date;
-        try {
-            date = inputFormat.parse(inputDate);
-        } catch (ParseException e) {
-            throw new IllegalArgumentException("Invalid date format: " + inputDate);
-        }
-        return outputFormat.format(date);
-    }
-
-    // 시간 포맷 변환 메서드
-	// 20240705 피그마 기준 HH:mm ~ HH:mm
-    public static String formatTime(String inputTime) {
-        String startTime = inputTime.substring(0, 4);
-        String endTime = inputTime.substring(4);
-        
-        SimpleDateFormat inputFormat = new SimpleDateFormat("HHmm");
-        SimpleDateFormat outputFormat = new SimpleDateFormat("HH:mm");
-        
-        Date startDate, endDate;
-        try {
-            startDate = inputFormat.parse(startTime);
-            endDate = inputFormat.parse(endTime);
-        } catch (ParseException e) {
-            throw new IllegalArgumentException("Invalid time format: " + inputTime);
-        }
-        
-        return outputFormat.format(startDate) + " ~ " + outputFormat.format(endDate);
-    }
-
-	private String getTimeQuery(String aptCode, String communityType) {
-		return "SELECT  " +
-			" START_TIME , END_TIME, " +
-			" OPERATION_HOURS, " +
-			" COMMUNITY_STATE " +
-			"FROM APT_COMMUNITY " +
-			"WHERE APT_CODE = '" + aptCode + "'  "+
-			" AND  COMMUNITY_TYPE= '" + communityType + "'  ";
-	}
-
-	// 예약건 데이터 클래스
-	static class Reservation {    
-        String strTime;
-        String strPlace;
-
-        Reservation(String Place, String Time) {
-            this.strPlace = Place;
-            this.strTime = Time;
-        }
-
-		public String getPlace(){
-            return strPlace;
-		}
-
-		public String getTime(){
-			return strTime;
-		}
-    }
-
-	private String getHolidaysQuery(String aptCode, String communityType) {
-		return "SELECT SPECIFIC_REPEAT_TYPE, SPECIFIC_DAY_OF_THE_WEEK, SPECIFIC_DAY_OF_THE_MONTH, SPECIFIC_TYPE, SPECIAL_DAY " +
-			"FROM APT_COMMUNITY_SPECIFIC " +
-			"WHERE APT_CODE = '" + aptCode + "' AND COMMUNITY_TYPE = '" + communityType + "' AND (SPECIFIC_TYPE = '0' OR SPECIFIC_TYPE = '3') ";
-	} 
-	
-	// 휴일 데이터 클래스
-	 static class Shortening {
-        int repeatType;
-        int dayOfWeek;
-        int dayOfMonth;
-		String StartTime;
-		String EndTime;
-
-        Shortening(int repeatType, int dayOfWeek, int dayOfMonth, String strStartTime, String strEndTime) {
-            this.repeatType = repeatType;
-            this.dayOfWeek = dayOfWeek;
-            this.dayOfMonth = dayOfMonth;
-			this.StartTime = strStartTime;
-			this.EndTime = strEndTime;
-        }
-    }	
-
-	/// 개발 서버 URL 우회하는 함수
-	public void callDevMemberDeleteAPI(String strresultBeforeUUID, String strDoorId, String strAptCode, String strCommunityType, Connection conn) {	
-		String baseUrl = "http://146.56.179.38/xmobile/villizinei/community/community_api_v11.jsp";
-        String strCallSID = "call_delete_api";
-        try {
-            // 쿼리 파라미터 인코딩
-            String query = String.format("SID=%s&strresultBeforeUUID=%s&strDoorId=%s&strAptCode=%s&strCommunityType=%s",
-					URLEncoder.encode(strCallSID, "UTF-8"),
-					URLEncoder.encode(strresultBeforeUUID, "UTF-8"),
-                    URLEncoder.encode(strDoorId, "UTF-8"),
-                    URLEncoder.encode(strAptCode, "UTF-8"),
-					URLEncoder.encode(strCommunityType, "UTF-8"));
-					
-            // 전체 URL 생성
-            String urlString = baseUrl + "?" + query;
-            URL url = new URL(urlString);
-			System.out.println("Request URL: " + url);
-
-			HttpURLConnection connAPI = (HttpURLConnection) url.openConnection();
-			connAPI.setRequestMethod("POST");
-
-			// 응답 코드 확인 (실제로 응답을 기다리지 않음)
-			int responseCode = connAPI.getResponseCode();
-			System.out.println("Response Code: " + responseCode);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-	}
-
-	public void callDevReservationAPI(String strUserId, String strReservationUserName, String strReservationUserPhone,
-	 String strDate, String strTime, String strDoorId, String strAptCode, Connection conn, String strCommunityType, String strDong, String strHo) {
-    	String baseUrl = "http://146.56.179.38/xmobile/villizinei/community/community_api_v11.jsp";
-        String strCallSID = "call_reservation_api";
-        try {
-            // 쿼리 파라미터 인코딩
-            String query = String.format("SID=%s&strUserId=%s&strReservationUserName=%s&strReservationUserPhone=%s&strDate=%s&strTime=%s&strDoorId=%s&strAptCode=%s&strCommunityType=%s&strUserDong=%s&strUserHo=%s",
-					URLEncoder.encode(strCallSID, "UTF-8"),
-					URLEncoder.encode(strUserId, "UTF-8"),
-                    URLEncoder.encode(strReservationUserName, "UTF-8"),
-                    URLEncoder.encode(strReservationUserPhone, "UTF-8"),
-					URLEncoder.encode(strDate, "UTF-8"),
-                    URLEncoder.encode(strTime, "UTF-8"),
-                    URLEncoder.encode(strDoorId, "UTF-8"),
-					URLEncoder.encode(strAptCode, "UTF-8"),
-					URLEncoder.encode(strCommunityType, "UTF-8"),
-                    URLEncoder.encode(strDong, "UTF-8"),
-					URLEncoder.encode(strHo, "UTF-8"));
-					
-            // 전체 URL 생성
-            String urlString = baseUrl + "?" + query;
-            URL url = new URL(urlString);
-			System.out.println("Request URL: " + url);
-
-			HttpURLConnection connAPI = (HttpURLConnection) url.openConnection();
-			connAPI.setRequestMethod("POST");
-
-			// 응답 코드 확인 (실제로 응답을 기다리지 않음)
-			int responseCode = connAPI.getResponseCode();
-			System.out.println("Response Code: " + responseCode);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-	}
-		
-	private String extractValue(String jsonString, String key, String field) {
-		// JSONParser를 사용하여 JSON 문자열을 파싱
-		JSONParser parser = new JSONParser();
-		try {
-			JSONObject jsonObject = (JSONObject) parser.parse(jsonString);
-
-			// 주어진 key에 해당하는 JSONObject를 가져옴
-			JSONObject targetObject = (JSONObject) jsonObject.get(key);
-			if (targetObject != null) {
-				// 주어진 field에 해당하는 값을 가져옴
-				Object value = targetObject.get(field);
-				return value != null ? value.toString() : null; // null 체크 후 문자열로 변환
-			} else {
-				System.out.println("Key not found: " + key);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		return ""; // 값이 없거나 오류가 발생한 경우 null 반환
-	}
-
-	private int getRemainingUses(Connection conn, String membershipId, String strUserDong, String strUserHo, String strUserName, String aptCode, int usageLimit) throws SQLException {
-		String strUserMembershipListQuery = 
-			"SELECT MEMBERSHIP_USER_LIST_ID " + 
-			" FROM APT_COMMUNITY_MEMBERSHIP_USER_LIST " +
-			" WHERE MEMBERSHIP_ID = ?" +
-			" AND USER_DONG  = ? " +
-			" AND USER_HO  = ? " +
-			" AND USER_NAME  = ? " +		
-			" AND APT_CODE  = ? " +		
-			" ORDER BY MEMBERSHIP_USER_LIST_ID desc " +
-			" LIMIT 1";
-
-		PreparedStatement pstmt = conn.prepareStatement(strUserMembershipListQuery);
-        pstmt.setString(1, membershipId);
-        pstmt.setString(2, strUserDong);
-		pstmt.setString(3, strUserHo);
-		pstmt.setString(4, strUserName);
-		pstmt.setString(5, aptCode);
-        ResultSet rs = pstmt.executeQuery();
-		String strMembershipListId = "0";
-		if (rs.next()) {
-			strMembershipListId = rs.getString("MEMBERSHIP_USER_LIST_ID");
-		}
-
-        String strUsageQuery = 
-            "SELECT COUNT(*) as use_count FROM APT_COMMUNITY_RESERVE " +
-            "WHERE MEMBERSHIP_USER_LIST_ID = ?  " +
-			" AND USER_DONG = ? " +	
-			" AND USER_HO = ? " +	
-			" AND RESERVE_USER_NAME = ? " +
-			" AND APT_CODE = ? " +
-            " AND RESERVE_CANCEL_TIME IS NULL";
-            
-        pstmt = conn.prepareStatement(strUsageQuery);
-        pstmt.setString(1, strMembershipListId);
-        pstmt.setString(2, strUserDong);
-		pstmt.setString(3, strUserHo);
-		pstmt.setString(4, strUserName);
-        pstmt.setString(5, aptCode);
-        rs = pstmt.executeQuery();
-		if (rs.next()) {
-			int usedCount = rs.getInt("use_count");
-			return Math.max(0, usageLimit - usedCount);
-		}
-		return 0;
-    }
-
-	// 현재 시간이 시작 시간과 종료 시간 사이에 있는지 확인하는 함수
-    public static boolean isTimeWithinRange(String currentTime, String startTime, String endTime) {
-        // 현재 시간이 시작 시간과 종료 시간 사이에 있는지 비교
-        return currentTime.compareTo(startTime) >= 0 && currentTime.compareTo(endTime) <= 0;
-    }
-
-	public static String createDateTimeId() {
-		// 일시YYMMDDHHMMSSMS(15)
-		SimpleDateFormat simpleDateFormat = new SimpleDateFormat("YYYYMMddHHmmssSSS");
-		Date date = new Date();
-		String strDate = simpleDateFormat.format(date);
-		strDate = strDate.substring(2, 17);
-		
-		// 랜덤(4) + 일시(15)
-		return strDate;
-	}
-
-	public String formatDateTime(String dateTime) {
-
-		if(dateTime == null || dateTime.trim().contentEquals("")) {
-			return "";
-		}
-
-		dateTime = dateTime.trim();
-
-		if(dateTime.length() != 14) {
-			return "";
-		}
-
-		try {
-			TimeZone seoulTimeZone = TimeZone.getTimeZone("Asia/Seoul");
-
-			SimpleDateFormat inputFormat =
-				new SimpleDateFormat("yyyyMMddHHmmss");
-			inputFormat.setTimeZone(seoulTimeZone);
-
-			SimpleDateFormat outputFormat =
-				new SimpleDateFormat("yy.MM.dd(E) HH:mm:ss", Locale.KOREAN);
-			outputFormat.setTimeZone(seoulTimeZone);
-
-			Date parsedDate = inputFormat.parse(dateTime);
-
-			return outputFormat.format(parsedDate);
-
-		} catch(Exception e) {
-			e.printStackTrace();
-			return "";
-		}
-	}
-
 	public static class PaymentResult {
 		public boolean isPaymentConfirmed = false;
 		public boolean isPaymentSaved = false;
@@ -762,7 +309,6 @@ ResultSet 			rs = null;	 			// Query Result Set Object
 
 ResultSetMetaData 	rsMetaData = null;
 
-ResultSet 			rs_votecount = null;	 		// Query Result Set Object
 ResultSet 			rs_community = null;	 		// Query Result Set Object
 
 // Clear out's buffer
@@ -829,7 +375,7 @@ try {
 		int nRet = pstmt.executeUpdate();
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
+		writeText(baOutStream, Integer.toString(nRet));
 		
 		// 얼굴인식을 쓰는 커뮤니티센터면 삭제 API도 호출
 		// 현재 예약한 서비스에 해당하는 문을 조회환 다음 for문으로 문에 등록된 사용자 제거
@@ -1798,8 +1344,7 @@ try {
 						}
 					}
 					
-					baOutStream.write(strData.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, strData);
 				}
 			}
 
@@ -1880,16 +1425,9 @@ try {
 			// OPERATION_HOURS가 있으면 오늘이 평일인지 주말인지에 따라 운영시간 추출
 			if(strOperationHours != null && !strOperationHours.contentEquals("")) {
 
-				Calendar calendarOperationHoursL = Calendar.getInstance();
-				int dayOfWeekOHL = calendarOperationHoursL.get(Calendar.DAY_OF_WEEK);
-
-				if(dayOfWeekOHL == Calendar.SATURDAY || dayOfWeekOHL == Calendar.SUNDAY) {
-					strFacilityStartTime = extractValue(strOperationHours, "WEEKEND", "start");
-					strFacilityEndTime = extractValue(strOperationHours, "WEEKEND", "end");
-				} else {
-					strFacilityStartTime = extractValue(strOperationHours, "WEEKDAY", "start");
-					strFacilityEndTime = extractValue(strOperationHours, "WEEKDAY", "end");
-				}
+				String[] arrOperationTime = getOperationTimeRange(strOperationHours, null);
+				strFacilityStartTime = arrOperationTime[0];
+				strFacilityEndTime = arrOperationTime[1];
 
 			} else {
 				// OPERATION_HOURS가 없으면 시설 기본 운영시간 사용
@@ -1954,42 +1492,7 @@ try {
 
 			while(rsHolidaysL.next()) {
 
-				String strRepeatTypeL = rsHolidaysL.getString(1);
-				String strHoliDaysDayOfWeekL = rsHolidaysL.getString(2);
-				String strHolidaysDayOfMonthL = rsHolidaysL.getString(3);
-				String strSpecificTypeL = rsHolidaysL.getString(4);
-				String strSpecialDayL = rsHolidaysL.getString(5);
-
-				int nSpecificRepeatTypeL = -1;
-				int nHoliDaysDayOfWeekL = -1;
-				int nHolidaysDayOfMonthL = -1;
-				int nSpecificTypeL = -1;
-
-				if(strRepeatTypeL != null && !strRepeatTypeL.contentEquals("")) {
-					nSpecificRepeatTypeL = Integer.parseInt(strRepeatTypeL);
-				}
-
-				if(strHoliDaysDayOfWeekL != null && !strHoliDaysDayOfWeekL.contentEquals("")) {
-					nHoliDaysDayOfWeekL = Integer.parseInt(strHoliDaysDayOfWeekL);
-				}
-
-				if(strHolidaysDayOfMonthL != null && !strHolidaysDayOfMonthL.contentEquals("")) {
-					nHolidaysDayOfMonthL = Integer.parseInt(strHolidaysDayOfMonthL);
-				}
-
-				if(strSpecificTypeL != null && !strSpecificTypeL.contentEquals("")) {
-					nSpecificTypeL = Integer.parseInt(strSpecificTypeL);
-				}
-
-				if(strSpecialDayL == null) {
-					strSpecialDayL = "";
-				}
-
-				holidaysListL.add(new Holiday(nSpecificRepeatTypeL,
-                                                nHoliDaysDayOfWeekL,
-                                                nHolidaysDayOfMonthL,
-                                                nSpecificTypeL,
-                                                strSpecialDayL));
+				holidaysListL.add(createHolidayFromResultSet(rsHolidaysL));
 			}
 
 			rsHolidaysL.close();
@@ -2085,25 +1588,19 @@ try {
 				strState = "4";
 			}
 
-			baOutStream.write(strQRId.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strQRId);
 
-			baOutStream.write(strQRSecurityCode.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strQRSecurityCode);
 
-			baOutStream.write(strSecurity.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strSecurity);
 
-			baOutStream.write(strActualStartTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strActualStartTime);
 
-			baOutStream.write(strActualEndTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strActualEndTime);
 
-			baOutStream.write(strState.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strState);
 
-			baOutStream.write(RECORD_DEL);
+			writeRecord(baOutStream);
 		
 			strQRId ="";
 			strQRSecurityCode = "";
@@ -2767,44 +2264,14 @@ try {
 		pstmt = conn.prepareStatement(strHolidaysQuery);
 		rs_community = pstmt.executeQuery();
 
-		rsMetaData = rs_community.getMetaData();
 		// 휴무일을 조합하는 문자열
 		String strHolidays = "";
 
 		// 자바 1.7이전 버전에서는 switch문에 문자열이 안 됨...
 		// int 타입으로 변경
 		for(int nHoliDaysRow = 0; rs_community.next(); nHoliDaysRow++) {
-			String strRepeatType =  rs_community.getString(1);
-			String strHoliDaysDayOfWeek = rs_community.getString(2);
-			String strHolidaysDayOfMonth = rs_community.getString(3);
-			String strSpecificType = rs_community.getString(4);
-			String strSpecialDay = rs_community.getString(5);
-			int nSpecificRepeatType = -1;
-			int nHoliDaysDayOfWeek = -1;
-			int nHolidaysDayOfMonth = -1;
-			int nSpecificType = -1;
-
-			if(strRepeatType != null && !strRepeatType.contentEquals("")){
-				nSpecificRepeatType = Integer.parseInt(strRepeatType);
-			}
-
-			if(strHoliDaysDayOfWeek != null && !strHoliDaysDayOfWeek.contentEquals("")){
-				nHoliDaysDayOfWeek = Integer.parseInt(strHoliDaysDayOfWeek);
-			}
-
-			if(strHolidaysDayOfMonth != null && !strHolidaysDayOfMonth.contentEquals("")){
-				nHolidaysDayOfMonth = Integer.parseInt(strHolidaysDayOfMonth);
-			}
-
-			if(strSpecificType != null && !strSpecificType.contentEquals("")){
-				nSpecificType = Integer.parseInt(strSpecificType);
-			}
-
-			if(strSpecialDay == null) {
-				strSpecialDay = "";
-			}
-
-			holidays.add(new Holiday(nSpecificRepeatType, nHoliDaysDayOfWeek, nHolidaysDayOfMonth, nSpecificType, strSpecialDay)); // 매주 월요일					
+			Holiday holiday = createHolidayFromResultSet(rs_community);
+			holidays.add(holiday); // 매주 월요일					
 		}
 
 		// =====================================================
@@ -2818,20 +2285,9 @@ try {
 
 		if(strOperationHours != null && !strOperationHours.contentEquals("")) {
 
-			Calendar calendarOperationHours = Calendar.getInstance();
-
-			int dayOfWeekOperationHours = calendarOperationHours.get(Calendar.DAY_OF_WEEK);
-
-			if(dayOfWeekOperationHours == Calendar.SATURDAY || dayOfWeekOperationHours == Calendar.SUNDAY) {
-
-				strFacilityStartTime = extractValue(strOperationHours, "WEEKEND", "start");
-				strFacilityEndTime = extractValue(strOperationHours, "WEEKEND", "end");
-
-			} else {
-
-				strFacilityStartTime = extractValue(strOperationHours, "WEEKDAY", "start");
-				strFacilityEndTime = extractValue(strOperationHours, "WEEKDAY", "end");
-			}
+			String[] arrOperationTime = getOperationTimeRange(strOperationHours, null);
+			strFacilityStartTime = arrOperationTime[0];
+			strFacilityEndTime = arrOperationTime[1];
 
 		} else {
 			strFacilityStartTime = strStartTime != null ? strStartTime.replace(":", "").replace(" ", "") : "";
@@ -2991,110 +2447,84 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		baOutStream.write(strImage.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strImage);
 
-		baOutStream.write(strTitle.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strTitle);
 
-		baOutStream.write(strInfo.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strInfo);
 
 		// 취소 가능 여부 1 : 취소 가능, 0 : 취소 불가능
-		baOutStream.write(strCancellable.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strCancellable);
 
 		// 버튼 텍스트 취소가능하면 취소하기 불가능하면 
 		// 예약 mm분전에는 취소가 불가능합니다.
-		baOutStream.write(strButtonContext.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strButtonContext);
 
 		// 취소 가능 날짜 취소가 불가능해지면 빈 스트링
-		baOutStream.write(strCancellableDate.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strCancellableDate);
 
 		// 버튼 보임 여부 1 : 보임, 0 안 보임
-		baOutStream.write(strButtonVisibility.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strButtonVisibility);
 
-		baOutStream.write(strSecurity.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strSecurity);
 
 		if(isExpiration || isCanceled){
 			strSeatChangeAble = "0";
 		}
-		baOutStream.write(strSeatChangeAble.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		writeColumn(baOutStream, strSeatChangeAble);
 
-		baOutStream.write(strMembershipId.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		writeColumn(baOutStream, strMembershipId);
 
-		baOutStream.write(strOptionIds.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		writeColumn(baOutStream, strOptionIds);
 
-		baOutStream.write(strPlace.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		writeColumn(baOutStream, strPlace);
 
 		if(strDate.length() == 16){		
-			baOutStream.write(strDate.substring(0,8).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(strDate.substring(8,strDate.length()).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);							
+			writeColumn(baOutStream, strDate.substring(0,8));
+			writeColumn(baOutStream, strDate.substring(8,strDate.length()));
 		}else{
-			baOutStream.write(strDate.getBytes(S_CHARSET)); // 자리변경시 문제 생기면 다시 빈문자열로 수정 요망
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(strDate.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
+			writeColumn(baOutStream, strDate); // 자리변경시 문제 생기면 다시 빈문자열로 수정 요망
+			writeColumn(baOutStream, strDate);
 		}
 
 		if(calStart != null) {
-			baOutStream.write(sdfHHmm.format(calStart.getTime()).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(sdfHHmm.format(calEnd.getTime()).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, sdfHHmm.format(calStart.getTime()));
+			writeColumn(baOutStream, sdfHHmm.format(calEnd.getTime()));
 		} else {
-			baOutStream.write(strTime.substring(0,4).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strTime.substring(4,8).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strTime.substring(0,4));
+			writeColumn(baOutStream, strTime.substring(4,8));
 		}
 
-		baOutStream.write(strCommunitYType.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strCommunitYType);
 
 		if(strReceiptURL == null || strReceiptURL.trim().contentEquals("")){
-			baOutStream.write("".getBytes(S_CHARSET));
+			writeText(baOutStream, "");
 		}else{
-			baOutStream.write(strReceiptURL.getBytes(S_CHARSET));
+			writeText(baOutStream, strReceiptURL);
 		}
-		baOutStream.write(COLUMN_DEL);	
+		writeColumnDel(baOutStream);
 		
-		baOutStream.write(strQRId.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strQRId);
 
-		baOutStream.write(strQRSecurityCode.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strQRSecurityCode);
 
-		baOutStream.write(strState.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strState);
 
 		if(strRefundableDate == null || strRefundableDate.trim().contentEquals("")){
-			baOutStream.write("".getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, "");
 		}else{
-			baOutStream.write(strRefundableDate.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strRefundableDate);
 		}
 
 		// 마지막 응답값으로 MEMBERSHIP_USER_LIST_ID 추가
 		if(strMembershipUserListId == null || strMembershipUserListId.trim().contentEquals("")) {
-			baOutStream.write("0".getBytes(S_CHARSET));
+			writeText(baOutStream, "0");
 		}else{
-			baOutStream.write(strMembershipUserListId.getBytes(S_CHARSET));
+			writeText(baOutStream, strMembershipUserListId);
 		}
-		baOutStream.write(COLUMN_DEL);
+		writeColumnDel(baOutStream);
 
-		baOutStream.write(RECORD_DEL);	
+		writeRecord(baOutStream);
 
 		returnData(baOutStream, outStream);
 
@@ -3128,20 +2558,16 @@ try {
 			String strQRId = rs.getString("ID") != null ? rs.getString("ID") : "";
 			String strQRSecurityCode = rs.getString("SECURITY_CODE") != null ? rs.getString("SECURITY_CODE") : "";
 
-			baOutStream.write(strCommunityType.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strCommunityType);
 
-			baOutStream.write(strTitle.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strTitle);
 
-			baOutStream.write(strGender.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strGender);
 
-			baOutStream.write(strQRId.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strQRId);
 
-			baOutStream.write(strQRSecurityCode.getBytes(S_CHARSET));
-			baOutStream.write(RECORD_DEL);
+			writeText(baOutStream, strQRSecurityCode);
+			writeRecord(baOutStream);
 		}
 
 		returnData(baOutStream, outStream);
@@ -3244,17 +2670,13 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 
 					baOutStream.reset();
 
-					baOutStream.write("0".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, "0");
 
-					baOutStream.write("예약 필수 정보가 없습니다.".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, "예약 필수 정보가 없습니다.");
 
-					baOutStream.write(strEmpty.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, strEmpty);
 
-					baOutStream.write(strEmpty.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, strEmpty);
 
 					returnData(baOutStream, outStream);
 					return;
@@ -3497,7 +2919,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 			boolean isSuccess = false;
 
 			if(resultImageCnt.contentEquals("0") && strSecurityType.contentEquals("1")){
-				baOutStream.write("9".getBytes(S_CHARSET));
+				writeText(baOutStream, "9");
 			}else{
 				if(resultCnt.contentEquals("0")){
 					if(isNeedPayment) {
@@ -3505,17 +2927,13 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 							
 							baOutStream.reset();
 
-							baOutStream.write("0".getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							writeColumn(baOutStream, "0");
 
-							baOutStream.write("결제 정보가 없습니다.".getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							writeColumn(baOutStream, "결제 정보가 없습니다.");
 
-							baOutStream.write(strEmpty.getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							writeColumn(baOutStream, strEmpty);
 
-							baOutStream.write(strEmpty.getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							writeColumn(baOutStream, strEmpty);
 
 							returnData(baOutStream, outStream);
 							return;
@@ -3541,17 +2959,13 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 
 							baOutStream.reset();
 
-							baOutStream.write("0".getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							writeColumn(baOutStream, "0");
 
-							baOutStream.write("이미 승인된 결제건입니다.".getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							writeColumn(baOutStream, "이미 승인된 결제건입니다.");
 
-							baOutStream.write(strEmpty.getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							writeColumn(baOutStream, strEmpty);
 
-							baOutStream.write(strEmpty.getBytes(S_CHARSET));
-							baOutStream.write(COLUMN_DEL);
+							writeColumn(baOutStream, strEmpty);
 
 							returnData(baOutStream, outStream);
 							return;
@@ -3596,7 +3010,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 
 					isSuccess = true;
 
-					baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
+					writeText(baOutStream, Integer.toString(nRet));
 
 					printLog("A", "[STEP 2][SUCCESS] 예약 DB INSERT 성공" + " - nRet : " + nRet);
 
@@ -3630,7 +3044,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 
 				}else if(!resultCnt.contentEquals("0")){
 					nRet = 2;
-					baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
+					writeText(baOutStream, Integer.toString(nRet));
 				}
 			}		
 
@@ -3722,14 +3136,14 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 				strReservationInfo +=  "인원 수*" + strPeople + "*+";
 			}
 
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strMessage.getBytes(S_CHARSET));
+			writeColumnDel(baOutStream);
+			writeText(baOutStream, strMessage);
 
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strReservationId.getBytes(S_CHARSET));
+			writeColumnDel(baOutStream);
+			writeText(baOutStream, strReservationId);
 			
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strReservationInfo.getBytes(S_CHARSET));
+			writeColumnDel(baOutStream);
+			writeText(baOutStream, strReservationInfo);
 
 			printLog("D","strMessage : " +strMessage);
 			printLog("D","strReservationId : " +strReservationId);
@@ -4478,19 +3892,15 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 				try {
 					baOutStream.reset();
 
-					baOutStream.write("0".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, "0");
 
 					String strErrorMessage = e.getMessage() != null ? e.getMessage() : "예약 처리 중 오류가 발생했습니다.";
 
-					baOutStream.write(strErrorMessage.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, strErrorMessage);
 
-					baOutStream.write(strEmpty.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, strEmpty);
 
-					baOutStream.write(strEmpty.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
+					writeColumn(baOutStream, strEmpty);
 
 					returnData(baOutStream, outStream);
 					return;
@@ -4625,14 +4035,11 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			printLog("A", "create_partner_payment error : " + e.getMessage());
 		}
 
-		baOutStream.write(strResult.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strResult);
 
-		baOutStream.write(strPaymentId.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strPaymentId);
 
-		baOutStream.write(strMessage.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strMessage);
 
 		returnData(baOutStream, outStream);
 	}else if(strSID.contentEquals("get_reservation_notice")){
@@ -4688,10 +4095,8 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 				
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 		
-		baOutStream.write(strTitle.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strReservationNotice.getBytes(S_CHARSET));
- 		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strTitle);
+		writeColumn(baOutStream, strReservationNotice);
 
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(baOutStream, outStream);
@@ -4962,10 +4367,8 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			// JSONArray를 문자열로 변환
 			String jsonString = jsonArray.toJSONString();
 					
-			baOutStream.write(jsonString.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(Integer.toString(nRemainingSeats).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
+			writeColumn(baOutStream, jsonString);
+			writeColumn(baOutStream, Integer.toString(nRemainingSeats));
 			
 		}else{
 
@@ -5058,10 +4461,8 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			// JSONArray를 문자열로 변환
 			String jsonString = jsonArray.toJSONString();
 					
-			baOutStream.write(jsonString.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(Integer.toString(nRemainingSeats).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
+			writeColumn(baOutStream, jsonString);
+			writeColumn(baOutStream, Integer.toString(nRemainingSeats));
 		}
 
 		returnData(baOutStream, outStream);
@@ -5720,24 +5121,18 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 
 			ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-			baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, Integer.toString(nRet));
 
-			baOutStream.write(strMessage.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strMessage);
 
-			baOutStream.write(strReservationId.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strReservationId);
 
-			baOutStream.write(strResultInfo.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strResultInfo);
 
 			if(isNeedPayment && isPaymentSaved){
-				baOutStream.write(strPaymentId.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				writeColumn(baOutStream, strPaymentId);
 			}else{
-				baOutStream.write("".getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				writeColumn(baOutStream, "");
 			}
 
 			returnData(baOutStream, outStream);
@@ -6103,9 +5498,8 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 		}
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(Integer.toString(nResultRet).getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(RECORD_DEL);
+		writeColumn(baOutStream, Integer.toString(nResultRet));
+		writeRecord(baOutStream);
 		returnData(baOutStream, outStream);
 
 	} else if(strSID.contentEquals("get_membership_list")) {
@@ -6707,7 +6101,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 							strUseCountText = strMembershipName + " / " + strUseCountText;
 						}
 
-						baOutStream.write(strUseCountText.getBytes(S_CHARSET));
+						writeText(baOutStream, strUseCountText);
 					} else if(nCol == 7 && !strData.isEmpty()) {
 
 						String placeValue = strData;
@@ -6716,18 +6110,18 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 							placeValue = "대관";
 						}
 
-						baOutStream.write(("예약 자리 : " + placeValue).getBytes(S_CHARSET));
+						writeText(baOutStream, ("예약 자리 : " + placeValue));
 
 						System.out.println("RAW_DATA = [" + placeValue + "]");
 
 					} else if(nCol == 7 && strData.isEmpty()) {
 
-						baOutStream.write(strMembershipName.getBytes(S_CHARSET));
+						writeText(baOutStream, strMembershipName);
 
 					} else {
-						baOutStream.write(strData.getBytes(S_CHARSET));
+						writeText(baOutStream, strData);
 					}
-					baOutStream.write(COLUMN_DEL);
+					writeColumnDel(baOutStream);
 				} else if(nCol == 9) {
 					strCommunityType = strData;
 
@@ -6858,27 +6252,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 
 			} else if(strOperationHours != null && !strOperationHours.contentEquals("")) {
 
-				SimpleDateFormat sdfOperationHours = new SimpleDateFormat("yyyyMMdd");
-				String currentDateTime = sdfOperationHours.format(new Date());
-				Date dateOperationHours = sdfOperationHours.parse(currentDateTime);
-
-				Calendar calendarOperationHours = Calendar.getInstance();
-				calendarOperationHours.setTime(dateOperationHours);
-
-				int dayOfWeek = calendarOperationHours.get(Calendar.DAY_OF_WEEK);
-
-				String strStartTimeJson = "";
-				String strEndTimeJson = "";
-
-				if (dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY) {
-					strStartTimeJson = extractValue(strOperationHours, "WEEKEND", "start");
-					strEndTimeJson = extractValue(strOperationHours, "WEEKEND", "end");
-				} else {
-					strStartTimeJson = extractValue(strOperationHours, "WEEKDAY", "start");
-					strEndTimeJson = extractValue(strOperationHours, "WEEKDAY", "end");
-				}
-
-				strTimeForCalc = strStartTimeJson + strEndTimeJson;
+				strTimeForCalc = getOperationTime(strOperationHours, null);
 
 			} else {
 				strTimeForCalc = strStartTime + strEndTime;
@@ -6895,45 +6269,9 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 			if(strOperationHours != null
 				&& !strOperationHours.contentEquals("")) {
 
-				Calendar facilityCalendar =
-					Calendar.getInstance();
-
-				int facilityDayOfWeek =
-					facilityCalendar.get(Calendar.DAY_OF_WEEK);
-
-				if(facilityDayOfWeek == Calendar.SATURDAY
-					|| facilityDayOfWeek == Calendar.SUNDAY) {
-
-					strFacilityStartTime =
-						extractValue(
-							strOperationHours,
-							"WEEKEND",
-							"start"
-						);
-
-					strFacilityEndTime =
-						extractValue(
-							strOperationHours,
-							"WEEKEND",
-							"end"
-						);
-
-				} else {
-
-					strFacilityStartTime =
-						extractValue(
-							strOperationHours,
-							"WEEKDAY",
-							"start"
-						);
-
-					strFacilityEndTime =
-						extractValue(
-							strOperationHours,
-							"WEEKDAY",
-							"end"
-						);
-				}
+				String[] arrOperationTime = getOperationTimeRange(strOperationHours, null);
+				strFacilityStartTime = arrOperationTime[0];
+				strFacilityEndTime = arrOperationTime[1];
 
 			} else {
 
@@ -6969,42 +6307,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 				rsHolidays = pstmtHolidays.executeQuery();
 
 				while(rsHolidays.next()) {
-					String strRepeatType = rsHolidays.getString(1);
-					String strHoliDaysDayOfWeek = rsHolidays.getString(2);
-					String strHolidaysDayOfMonth = rsHolidays.getString(3);
-					String strSpecificType = rsHolidays.getString(4);
-					String strSpecialDay = rsHolidays.getString(5);
-
-					int nSpecificRepeatType = -1;
-					int nHoliDaysDayOfWeek = -1;
-					int nHolidaysDayOfMonth = -1;
-					int nSpecificType = -1;
-
-					if(strRepeatType != null && !strRepeatType.contentEquals("")) {
-						nSpecificRepeatType = Integer.parseInt(strRepeatType);
-					}
-
-					if(strHoliDaysDayOfWeek != null && !strHoliDaysDayOfWeek.contentEquals("")) {
-						nHoliDaysDayOfWeek = Integer.parseInt(strHoliDaysDayOfWeek);
-					}
-
-					if(strHolidaysDayOfMonth != null && !strHolidaysDayOfMonth.contentEquals("")) {
-						nHolidaysDayOfMonth = Integer.parseInt(strHolidaysDayOfMonth);
-					}
-
-					if(strSpecificType != null && !strSpecificType.contentEquals("")) {
-						nSpecificType = Integer.parseInt(strSpecificType);
-					}
-
-					if(strSpecialDay == null) strSpecialDay = "";
-
-					holidaysList.add(new Holiday(
-						nSpecificRepeatType,
-						nHoliDaysDayOfWeek,
-						nHolidaysDayOfMonth,
-						nSpecificType,
-						strSpecialDay
-					));
+					holidaysList.add(createHolidayFromResultSet(rsHolidays));
 				}
 			} finally {
 				if(rsHolidays != null) try { rsHolidays.close(); } catch(Exception e) {}
@@ -7164,43 +6467,30 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 게스트하우스 예�
 			}
 
 			// 기존 get_membership_list 응답 8개 뒤에 추가 응답값 write
-			baOutStream.write(strQRId.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strQRId);
 
-			baOutStream.write(strQRSecurityCode.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strQRSecurityCode);
 
-			baOutStream.write(strSecurity.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strSecurity);
 
-			baOutStream.write(strActualStartTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strActualStartTime);
 
-			baOutStream.write(strActualEndTime.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strActualEndTime);
 
-			baOutStream.write(strState.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, strState);
 
-			baOutStream.write(RECORD_DEL);
+			writeRecord(baOutStream);
 		}
 		returnData(baOutStream, outStream);
 	}
 
 }catch(Exception e) {
-	ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-	String errMsg = "Exception Msg = " + e.getMessage();
-	baOutStream.write(errMsg.getBytes(S_CHARSET));
-	printLog("A", " ###### errMsg  = #####" + errMsg);
-
-	// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-	returnData(baOutStream, outStream);
+	// 예외 메시지를 빌리진아이 포맷으로 전송
+	sendError(e, outStream);
 }
 finally {
 	// Release a database resources
-	if(rs != null) { try { rs.close(); } catch(Exception ignore) {} }
-	if(pstmt != null) { try { pstmt.close(); } catch(Exception ignore) {} }
-	if(conn != null) { try { conn.close(); } catch(Exception ignore) {} }
+	closeQuietly(rs, pstmt, conn);
 }
 %>
 

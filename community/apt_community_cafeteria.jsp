@@ -38,220 +38,7 @@
 
 
 
-<%!
-
-	public String getRequestParam(IssacWeb issacweb, HttpServletRequest request, String strKey) {
-		if(strKey == null || strKey.contentEquals("")) {
-			printLog("A", "getRequestParam strKey null");
-			return "";
-		}
-
-		String strValue = "";
-		if(isDev() == true) {
-			strValue = request.getParameter(strKey);
-			if(strValue == null) strValue = "";
-			try {
-				//개발서버만 UTF-8로 한번더 전환
-				strValue = new String(strValue.getBytes("8859_1"), S_CHARSET);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		} else {
-			strValue = issacweb.getParameter(strKey);
-			if(strValue == null) strValue = "";
-		}
-
-		return strValue;
-	}
-
-
-	/**
-	 * 빌리진아이 데이터 전송 포맷[ 데이터길이(4자리) + 데이터 ] 에 맞게 조합한 후, 클라이언트로 전송..
-	 */
-	public void returnData(IssacWeb issacweb, ByteArrayOutputStream baOutStream, OutputStream outStream) {
-		if(baOutStream == null || outStream == null) {
-			return;
-		}
-
-		try {
-
-			byte[] baSendData = null;
-			if(isDev() == true) {
-				baSendData = baOutStream.toByteArray();
-			} else {
-				ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-				baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-				baSendData = baEncryptOutStream.toByteArray();
-			}
-
-			int nSendDataLength = baSendData.length;
-
-			byte[] baSendDataLength = new byte[4];
-			baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-			baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-			baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-			baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-			outStream.write(baSendDataLength, 0, 4);
-			outStream.write(baSendData, 0, nSendDataLength);
-			outStream.flush();
-			outStream.close();
-		} catch (Exception e) {
-
-			try {
-
-				String errMsg = "Exceptino Msg = " + e.getMessage();
-				baOutStream.write(errMsg.getBytes(S_CHARSET));
-
-				byte[] baSendData = null;
-				if(isDev() == true) {
-					baSendData = baOutStream.toByteArray();
-				} else {
-					ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-					baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-					baSendData = baEncryptOutStream.toByteArray();
-				}
-
-				int nSendDataLength = baSendData.length;
-
-				byte[] baSendDataLength = new byte[4];
-				baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-				baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-				baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-				baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-				outStream.write(baSendDataLength, 0, 4);
-				outStream.write(baSendData, 0, nSendDataLength);
-				outStream.flush();
-				outStream.close();
-			} catch (Exception ex) {
-			}
-		}
-	}
-
-	/**
-	 * mysql \' or \\  이스케이프 문자 처리
-	 */
-	public static String isEscapeChar(String strContent) {
-		if(strContent == null || strContent.contentEquals("")) {
-			return "";
-		}
-		String strReplaceContent = strContent;
-		if(strContent.contains("\'")) {
-			strReplaceContent = strReplaceContent.replace("\'", "\'\'");
-		}
-		if(strContent.contains("\\")) {
-			strReplaceContent = strReplaceContent.replace("\\", "\\\\");
-		}
-		return strReplaceContent;
-	}
-
-	public static boolean createDirectory(String path) {
-		int charPos = path.lastIndexOf("/");
-		boolean result = false;
-		if(charPos > -1) {
-			String partialPath = path.substring(0, charPos);
-			File file = new File(partialPath);
-			result = file.mkdirs();
-		}
-		return result;
-	}
-
-
-	// 날짜 포맷 변환 메서드
-	// 20240705 피그마 기준 yy.MM,dd(E)
-    public static String formatDate(String inputDate) {
-        SimpleDateFormat inputFormat = new SimpleDateFormat("yyyyMMdd");
-        SimpleDateFormat outputFormat = new SimpleDateFormat("yy.MM.dd(E)", new Locale("ko", "KR"));
-        Date date;
-        try {
-            date = inputFormat.parse(inputDate);
-        } catch (ParseException e) {
-            throw new IllegalArgumentException("Invalid date format: " + inputDate);
-        }
-        return outputFormat.format(date);
-    }
-
-    // 시간 포맷 변환 메서드
-	// 20240705 피그마 기준 HH:mm ~ HH:mm
-    public static String formatTime(String inputTime) {
-        String startTime = inputTime.substring(0, 4);
-        String endTime = inputTime.substring(4);
-        
-        SimpleDateFormat inputFormat = new SimpleDateFormat("HHmm");
-        SimpleDateFormat outputFormat = new SimpleDateFormat("HH:mm");
-        
-        Date startDate, endDate;
-        try {
-            startDate = inputFormat.parse(startTime);
-            endDate = inputFormat.parse(endTime);
-        } catch (ParseException e) {
-            throw new IllegalArgumentException("Invalid time format: " + inputTime);
-        }
-        
-        return outputFormat.format(startDate) + " ~ " + outputFormat.format(endDate);
-    }
-
-
-	// 시간 HH:mm타입을 HHmm타입으로 포맷
-    public static String parseToHHmmHHmm(String time) {
-        return time.replaceAll(":", "").replaceAll(" ","").replaceAll("~","");
-    }
-
-
-
-	public static String formatPhoneNumber(String phoneNumber) {
-        // 전화번호가 11자리일 때 010-1234-5678 형식으로 변환
-        if (phoneNumber != null && phoneNumber.length() == 11) {
-            return phoneNumber.substring(0, 3) + "-" +
-                   phoneNumber.substring(3, 7) + "-" +
-                   phoneNumber.substring(7);
-        } else {
-            // 전화번호가 유효하지 않다면 그대로 반환
-            return phoneNumber;
-        }
-    }
-
-	public static String formatDateTime(String dateTime) {
-        // dateTime이 14자리일 때 "yyyy-MM-dd HH:mm:ss" 형식으로 변환
-        if (dateTime != null && dateTime.length() == 12) {
-            return dateTime.substring(0, 4) + "-" +
-                   dateTime.substring(4, 6) + "-" +
-                   dateTime.substring(6, 8) + " " +
-                   dateTime.substring(8, 10) + ":" +
-                   dateTime.substring(10, 12) + ":00";
-        } else {
-            // 날짜 및 시간이 유효하지 않다면 그대로 반환
-            return dateTime;
-        }
-    }
-
-	private String extractValue(String jsonString, String key, String field) {
-		// JSONParser를 사용하여 JSON 문자열을 파싱
-		JSONParser parser = new JSONParser();
-		try {
-			JSONObject jsonObject = (JSONObject) parser.parse(jsonString);
-
-			// 주어진 key에 해당하는 JSONObject를 가져옴
-			JSONObject targetObject = (JSONObject) jsonObject.get(key);
-			if (targetObject != null) {
-				// 주어진 field에 해당하는 값을 가져옴
-				Object value = targetObject.get(field);
-				return value != null ? value.toString() : null; // null 체크 후 문자열로 변환
-			} else {
-				System.out.println("Key not found: " + key);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		return ""; // 값이 없거나 오류가 발생한 경우 null 반환
-	}
-
-
-	
-%>
+<%@ include file="./apt_community_common.jsp" %>
 
 <%
 Connection 			conn = null;			// DB Connection Object
@@ -261,8 +48,6 @@ ResultSet 			rs = null;	 			// Query Result Set Object
 ResultSetMetaData 	rsMetaData = null;
 IssacWeb					m_issacweb = null;
 
-ResultSet 			rs_votecount = null;	 		// Query Result Set Object
-ResultSet 			rs_community = null;	 		// Query Result Set Object
 
 // Clear out's buffer
 out.clearBuffer();
@@ -279,9 +64,7 @@ try {
 	conn = DriverManager.getConnection(dbUrl, dbUserId, dbUserPasswd);
 
 	// 운영서버이면 암호화 객체 생성
-	if(isDev() == false) {
-		m_issacweb = new IssacWeb(request);
-	}
+	m_issacweb = createIssacWeb(request);
 	// Get Parameter - SID = query 구분.
 	String strSID = getRequestParam(m_issacweb, request, "SID");
 	printLog("A", "SID : " + strSID);
@@ -301,18 +84,7 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		rsMetaData = rs.getMetaData();
-
-
-		for(int nRow = 0; rs.next(); nRow++) {
-			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
-				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";					
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
-			}
-			baOutStream.write(RECORD_DEL);
-		}
+		writeResultSet(baOutStream, rs);
 		returnData(m_issacweb, baOutStream, outStream);
 
 	}else if(strSID.contentEquals("get_cafeteria_menu")){
@@ -335,18 +107,7 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		rsMetaData = rs.getMetaData();
-
-
-		for(int nRow = 0; rs.next(); nRow++) {
-			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
-				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";					
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
-			}
-			baOutStream.write(RECORD_DEL);
-		}
+		writeResultSet(baOutStream, rs);
 		returnData(m_issacweb, baOutStream, outStream);
 
 	}else if(strSID.contentEquals("get_cafeteria_menu_detail")){
@@ -369,18 +130,7 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		rsMetaData = rs.getMetaData();
-
-
-		for(int nRow = 0; rs.next(); nRow++) {
-			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
-				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";					
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
-			}
-			baOutStream.write(RECORD_DEL);
-		}
+		writeResultSet(baOutStream, rs);
 		returnData(m_issacweb, baOutStream, outStream);
 
 	}else if(strSID.contentEquals("submit_menu_order")){
@@ -410,7 +160,7 @@ try {
 		if(strMenuIds.contentEquals("") || strQuantities.contentEquals("") || strPrices.contentEquals("") ||
 		MenuIds.length != Quantities.length || Quantities.length != Prices.length) {			
 			int nInvalidArrayLengths = 9;
-			baOutStream.write(Integer.toString(nInvalidArrayLengths).getBytes(S_CHARSET));
+			writeText(baOutStream, Integer.toString(nInvalidArrayLengths));
 
 			returnData(m_issacweb, baOutStream, outStream);
 			return;
@@ -518,10 +268,8 @@ try {
 
 	
 	
-		baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(newOrderId.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, Integer.toString(nRet));
+		writeColumn(baOutStream, newOrderId);
 
 
 		returnData(m_issacweb, baOutStream, outStream);
@@ -599,14 +347,12 @@ try {
 						e.printStackTrace();
 					}
 				}
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);			
+				writeColumn(baOutStream, strData);
 				if(nCol == rsMetaData.getColumnCount()) {
-					baOutStream.write(strPrcie.getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);			
+					writeColumn(baOutStream, strPrcie);
 				}	
 			}
-			baOutStream.write(RECORD_DEL);
+			writeRecord(baOutStream);
 		}
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(m_issacweb, baOutStream, outStream);
@@ -652,12 +398,9 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		baOutStream.write(strOrderTime.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strPickUpTime.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strTotalPrice.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strOrderTime);
+		writeColumn(baOutStream, strPickUpTime);
+		writeColumn(baOutStream, strTotalPrice);
 		
 		String strMenuQuery = "";
 		strMenuQuery += "SELECT (SELECT MENU_NAME FROM MENU WHERE MENU_ID = a.MENU_ID), ";
@@ -676,11 +419,10 @@ try {
 			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
 				String strData = rs.getString(nCol);	
 				if(strData == null) strData = "";				
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);			
+				writeColumn(baOutStream, strData);
 			}
 		}
-		baOutStream.write(RECORD_DEL);
+		writeRecord(baOutStream);
 
 		returnData(m_issacweb, baOutStream, outStream);
 
@@ -707,35 +449,17 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		rsMetaData = rs.getMetaData();
-
-
-		for(int nRow = 0; rs.next(); nRow++) {
-			for(int nCol = 1; nCol <= rsMetaData.getColumnCount(); nCol++) {
-				String strData = rs.getString(nCol);
-				if(strData == null) strData = "";					
-				baOutStream.write(strData.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
-			}
-			baOutStream.write(RECORD_DEL);
-		}
+		writeResultSet(baOutStream, rs);
 		returnData(m_issacweb, baOutStream, outStream);
 
 	}
 }catch(Exception e) {
-	ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-	String errMsg = "Exception Msg = " + e.getMessage();
-	baOutStream.write(errMsg.getBytes(S_CHARSET));
-	printLog("A", " ###### errMsg  = #####" + errMsg);
-
-	// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-	returnData(m_issacweb, baOutStream, outStream);
+	// 예외 메시지를 빌리진아이 포맷으로 전송
+	sendError(m_issacweb, e, outStream);
 }
 finally {
 	// Release a database resources
-	if(rs != null) { try { rs.close(); } catch(Exception ignore) {} }
-	if(pstmt != null) { try { pstmt.close(); } catch(Exception ignore) {} }
-	if(conn != null) { try { conn.close(); } catch(Exception ignore) {} }
+	closeQuietly(rs, pstmt, conn);
 }
 %>
 

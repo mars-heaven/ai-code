@@ -36,570 +36,15 @@
 <%@ page import="java.util.HashMap" %>
 
 
-<%!
-
-	public String getRequestParam(IssacWeb issacweb, HttpServletRequest request, String strKey) {
-		if(strKey == null || strKey.contentEquals("")) {
-			printLog("A", "getRequestParam strKey null");
-			return "";
-		}
-
-		String strValue = "";
-		if(isDev() == true) {
-			strValue = request.getParameter(strKey);
-			if(strValue == null) strValue = "";
-			try {
-				//개발서버만 UTF-8로 한번더 전환
-				strValue = new String(strValue.getBytes("8859_1"), S_CHARSET);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		} else {
-			strValue = issacweb.getParameter(strKey);
-			if(strValue == null) strValue = "";
-		}
-
-		return strValue;
-	}
-
-
-	/**
-	 * 빌리진아이 데이터 전송 포맷[ 데이터길이(4자리) + 데이터 ] 에 맞게 조합한 후, 클라이언트로 전송..
-	 */
-	public void returnData(IssacWeb issacweb, ByteArrayOutputStream baOutStream, OutputStream outStream) {
-		if(baOutStream == null || outStream == null) {
-			return;
-		}
-
-		try {
-
-			byte[] baSendData = null;
-			if(isDev() == true) {
-				baSendData = baOutStream.toByteArray();
-			} else {
-				if (baOutStream.size() == 0) {
-					// 빈값 처리
-					baOutStream.write(" ".getBytes(S_CHARSET));
-					baOutStream.write(COLUMN_DEL);
-					baOutStream.write(RECORD_DEL);
-				}
-				ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-				baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-				baSendData = baEncryptOutStream.toByteArray();
-			}
-
-			int nSendDataLength = baSendData.length;
-
-			byte[] baSendDataLength = new byte[4];
-			baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-			baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-			baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-			baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-			outStream.write(baSendDataLength, 0, 4);
-			outStream.write(baSendData, 0, nSendDataLength);
-			outStream.flush();
-			outStream.close();
-		} catch (Exception e) {
-
-			try {
-
-				String errMsg = "Exceptino Msg = " + e.getMessage();
-				baOutStream.write(errMsg.getBytes(S_CHARSET));
-
-				byte[] baSendData = null;
-				if(isDev() == true) {
-					baSendData = baOutStream.toByteArray();
-				} else {
-					ByteArrayOutputStream baEncryptOutStream = new ByteArrayOutputStream();
-					baEncryptOutStream.write(issacweb.getEncryptData(baOutStream, S_CHARSET));
-
-					baSendData = baEncryptOutStream.toByteArray();
-				}
-
-				int nSendDataLength = baSendData.length;
-
-				byte[] baSendDataLength = new byte[4];
-				baSendDataLength[0] = (byte)((nSendDataLength & 0xff000000) / 0x1000000);
-				baSendDataLength[1] = (byte)((nSendDataLength & 0x00ff0000) / 0x10000);
-				baSendDataLength[2] = (byte)((nSendDataLength & 0x0000ff00) / 0x100);
-				baSendDataLength[3] = (byte) (nSendDataLength & 0x000000ff);
-
-				outStream.write(baSendDataLength, 0, 4);
-				outStream.write(baSendData, 0, nSendDataLength);
-				outStream.flush();
-				outStream.close();
-			} catch (Exception ex) {
-			}
-		}
-	}
-
-	/**
-	 * mysql \' or \\  이스케이프 문자 처리
-	 */
-	public static String isEscapeChar(String strContent) {
-		if(strContent == null || strContent.contentEquals("")) {
-			return "";
-		}
-		String strReplaceContent = strContent;
-		if(strContent.contains("\'")) {
-			strReplaceContent = strReplaceContent.replace("\'", "\'\'");
-		}
-		if(strContent.contains("\\")) {
-			strReplaceContent = strReplaceContent.replace("\\", "\\\\");
-		}
-		return strReplaceContent;
-	}
-
-	// 휴일 데이터 클래스
-	 static class Holiday {
-        int repeatType;
-        int dayOfWeek;
-        int dayOfMonth;
-        int specificType;
-        String specialDay;
-
-        Holiday(int repeatType, int dayOfWeek, int dayOfMonth, int specificType, String specialDay) {
-            this.repeatType = repeatType;
-            this.dayOfWeek = dayOfWeek;
-            this.dayOfMonth = dayOfMonth;
-            this.specificType = specificType;
-            this.specialDay = specialDay;
-        }
-    }
-
-	// 오늘이 휴일인지 체크하는 메서드
-	// 휴일 모델을 넣고 오늘 요일, 일, 주를 넣어주면
-	// 휴일에 repeatType을 기준으로 해당하는게 있는지 확인하는 방식
-    private static boolean isTodayHoliday(Holiday holiday, int todayDayOfWeek, int todayDayOfMonth, int weekOfMonth) {
-        switch (holiday.repeatType) {
-            case WEEKLY_REPEAT:
-                return holiday.dayOfWeek == todayDayOfWeek;
-            case WEEK_OF_MONTH_1:
-            case WEEK_OF_MONTH_2:
-            case WEEK_OF_MONTH_3:
-            case WEEK_OF_MONTH_4:
-            case WEEK_OF_MONTH_5:
-                return holiday.dayOfWeek == todayDayOfWeek && holiday.repeatType == weekOfMonth;
-            case MONTHLY_REPEAT:
-                return holiday.dayOfMonth == todayDayOfMonth;
-            case DAILY_REPEAT:
-                return true;
-            case HOLIDAY_REPEAT:
-                // 구체적인 공휴일 날짜와 비교하는 로직 필요
-                return false;
-            default:
-                return false;
-        }
-    }
-	
-	// 임시휴무일 체크
-	private static boolean isTodayTempHoliday(Holiday holiday, String strSelectDay) {
-		if(holiday == null || strSelectDay == null || strSelectDay.contentEquals("")) {
-			return false;
-		}
-		
-		if(holiday.specificType != SPECIFIC_HOLIDAY_TEMP) {
-			return false;
-		}
-		
-		if(holiday.specialDay.contentEquals(strSelectDay)) {
-			return true;
-		}
-
-		return false;
-	}
-
-	// HH : mm ~ HH : mm 포멧에 배열을 리턴
-	// 유저가 선택할 수 있는 시간을 보여주기 위한 메서드
-	public static List<String> getTimeIntervals(String startTime, String endTime, int intervalMinutes, String strReserveTimeLintervalUnit) {
-        List<String> intervals = new ArrayList<String>();
-        SimpleDateFormat sdf = new SimpleDateFormat("HHmm");
-        SimpleDateFormat outputFormat = new SimpleDateFormat("HH:mm");
-
-        try {
-            Date startDate = sdf.parse(startTime);
-            Date endDate = sdf.parse(endTime);
-
-            Calendar startCal = Calendar.getInstance();
-            startCal.setTime(startDate);
-            Calendar endCal = Calendar.getInstance();
-            endCal.setTime(endDate);
-
-            while (startCal.before(endCal)) {
-                Date intervalStart = startCal.getTime();
-				if (strReserveTimeLintervalUnit.contentEquals(UNIT_MINUTE)) {
-					startCal.add(Calendar.MINUTE, intervalMinutes); // 분 단위 추가
-				} else if (strReserveTimeLintervalUnit.contentEquals(UNIT_HOUR)) {
-					startCal.add(Calendar.HOUR_OF_DAY, intervalMinutes); // 시간 단위 추가
-				} else if (strReserveTimeLintervalUnit.contentEquals(UNIT_DAYS)) {
-					startCal.add(Calendar.DAY_OF_YEAR, intervalMinutes); // 일 단위 추가
-				} else if (strReserveTimeLintervalUnit.contentEquals(UNIT_MONTH)) {
-					startCal.add(Calendar.MONTH, intervalMinutes); // 월 단위 추가
-				} else if (strReserveTimeLintervalUnit.contentEquals(UNIT_YEAR)) {
-					startCal.add(Calendar.YEAR, intervalMinutes); // 연 단위 추가
-				}
-                
-                Date intervalEnd = startCal.getTime();
-
-                if (intervalEnd.after(endDate)) {
-                    intervalEnd = endDate;
-                }
-
-                String interval = outputFormat.format(intervalStart) + " ~ " + outputFormat.format(intervalEnd);
-                intervals.add(interval);
-
-                if (intervalEnd.equals(endDate)) {
-                    break;
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return intervals;
-    }
-
-
-	// 시간 HH:mm타입을 HHmm타입으로 포맷
-    public static String parseToHHmmHHmm(String time) {
-        return time.replaceAll(":", "").replaceAll(" ","").replaceAll("~","");
-    }
-
-	
-	// 예약건 데이터 클래스
-	static class Reservation {    
-        String strTime;
-        String strPlace;
-
-        Reservation(String Place, String Time) {
-            this.strPlace = Place;
-            this.strTime = Time;
-        }
-
-		public String getPlace(){
-            return strPlace;
-		}
-
-		public String getTime(){
-			return strTime;
-		}
-    }
-
-	private Holiday createHolidayFromResultSet(ResultSet rs) throws SQLException {
-		String strRepeatType = rs.getString(1);
-		String strHoliDaysDayOfWeek = rs.getString(2);
-		String strHolidaysDayOfMonth = rs.getString(3);
-		String strSpecificType = rs.getString(4);
-		String strSpecialDay = rs.getString(5);
-
-		int nSpecificRepeatType = strRepeatType != null && !strRepeatType.isEmpty()
-				? Integer.parseInt(strRepeatType) : -1;
-		int nHoliDaysDayOfWeek = strHoliDaysDayOfWeek != null && !strHoliDaysDayOfWeek.isEmpty()
-				? Integer.parseInt(strHoliDaysDayOfWeek) : -1;
-		int nHolidaysDayOfMonth = strHolidaysDayOfMonth != null && !strHolidaysDayOfMonth.isEmpty()
-				? Integer.parseInt(strHolidaysDayOfMonth) : -1;
-		int nSpecificType = strSpecificType != null && !strSpecificType.isEmpty()
-				? Integer.parseInt(strSpecificType) : -1;
-		if (strSpecialDay == null) {
-			strSpecialDay = "";
-		}
-
-		return new Holiday(nSpecificRepeatType, nHoliDaysDayOfWeek, nHolidaysDayOfMonth, nSpecificType, strSpecialDay);
-	}
-
-	public static boolean isAvailable(List<Reservation> reservations, String strPlace, String strTime, 
-	String strDate, String strCommunityType, String strAptCode, Connection conn) {
-    // strTime의 길이가 8자가 아닌 경우 false 반환
-		if (strTime == null || strTime.length() != 8) {
-			return false;
-		}
-
-		// strTime -> 시작/종료 분으로 변환
-		int start = parseTimeToMinutes(strTime.substring(0, 4));
-		int end = parseTimeToMinutes(strTime.substring(4, 8));
-		if (end <= start) {
-			end += 24 * 60; // 자정 넘김 보정
-		}
-		
-
-		for (Reservation reservation : reservations) {
-			if (reservation.getPlace().equals(strPlace) || reservation.getPlace().contentEquals("PLACE_ALL") || strPlace.contentEquals("PLACE_ALL")) {
-				String reservationTime = reservation.getTime();
-				if (reservationTime == null || reservationTime.length() != 8) {
-					continue; // 잘못된 예약 데이터는 건너뜀
-				}
-
-				int resStart = parseTimeToMinutes(reservationTime.substring(0, 4));
-				int resEnd = parseTimeToMinutes(reservationTime.substring(4, 8));
-				if (resEnd <= resStart) {
-					resEnd += 24 * 60; // 자정 넘김 보정
-				}
-
-				// 범위 겹침: (start < resEnd) && (end > resStart)
-				if (start < resEnd && end > resStart) {
-					return false; // 겹침
-				}
-			}
-		}
-
-		// DB에서 특정 날짜, 시간, 시설이 휴일로 지정되었는지 추가 확인
-		String strAvailable = "0";
-		String strShorteningQuery = "SELECT COUNT(*) " +
-				"FROM APT_COMMUNITY_SPECIFIC " +
-				"WHERE APT_CODE = ? AND COMMUNITY_TYPE = ? AND SPECIAL_DAY = ? AND SPECIFIC_TYPE = '2' " +
-				"AND ((? >= START_TIME AND ? < END_TIME) OR (? > START_TIME AND ? < END_TIME))";
-
-		PreparedStatement pstmt = null;
-		ResultSet rs = null;
-
-		try {
-			pstmt = conn.prepareStatement(strShorteningQuery);
-			pstmt.setString(1, strAptCode);
-			pstmt.setString(2, strCommunityType);
-			pstmt.setString(3, strDate);
-			pstmt.setString(4, strTime.substring(0, 4)); // 시작 HHmm
-			pstmt.setString(5, strTime.substring(0, 4)); // 시작 HHmm
-			pstmt.setString(6, strTime.substring(4, 8)); // 종료 HHmm
-			pstmt.setString(7, strTime.substring(4, 8)); // 종료 HHmm
-
-			rs = pstmt.executeQuery();
-			if (rs.next()) {
-				strAvailable = rs.getString(1);
-			}
-			if(strAvailable.contentEquals("1")){
-				// 해당 날짜가 시간이 휴일로 되어 있는 경우
-				return false;
-			}			
-			//System.out.println("strAvailable: " + strAvailable);
-
-		}catch (Exception e){
-			String errMsg = "Exceptino Msg = " + e.getMessage();
-			return false;
-		}	
-
-
-
-		return true; // 예약 시간과 겹치지 않음
-	}
-
-	private static boolean isPublicHoliday(String strSelectDay, Connection conn){
-		boolean isHoliday = false;
-
-		String strHolidayQuery = "";
-		strHolidayQuery += "SELECT COUNT(*) ";
-		strHolidayQuery += "FROM HOLIDAYS ";
-		strHolidayQuery += "WHERE HOLIDAY_DATE = '" + strSelectDay + "' ";
-		
-        PreparedStatement pstmt = null;
-        ResultSet rs = null;
-		try{
-			pstmt = conn.prepareStatement(strHolidayQuery);
-			rs = pstmt.executeQuery();
-			if (rs.next()) {
-				String strHolidayCount = rs.getString(1);
-				if(!strHolidayCount.contentEquals("0")){
-					isHoliday = true;
-				}
-			}
-			return isHoliday;
-		}catch (Exception e){
-			String errMsg = "Exceptino Msg = " + e.getMessage();
-			
-			return isHoliday;
-		}	
-	}
-
-	private static boolean isSpecialOperatingDay(String strAptCode, String strCommunityType, String strSelectDay, Connection conn){
-		boolean isHoliday = false;
-
-		String strHolidayQuery = "SELECT COUNT(*) ";
-		strHolidayQuery += " FROM APT_COMMUNITY_SPECIFIC ";
-		strHolidayQuery += " WHERE APT_CODE = '" + strAptCode + "' AND COMMUNITY_TYPE = '" + strCommunityType + "' AND SPECIFIC_TYPE = '4' ";
-		strHolidayQuery += " AND SPECIAL_DAY = '" + strSelectDay + "' ";
-
-		
-        PreparedStatement pstmt = null;
-        ResultSet rs = null;
-		try{
-			pstmt = conn.prepareStatement(strHolidayQuery);
-			rs = pstmt.executeQuery();
-			if (rs.next()) {
-				String strHolidayCount = rs.getString(1);
-				if(!strHolidayCount.contentEquals("0")){
-					isHoliday = true;
-				}
-			}
-			return isHoliday;
-		}catch (Exception e){
-			String errMsg = "Exceptino Msg = " + e.getMessage();
-			
-			return isHoliday;
-		}	
-	}
-
-	// HHmm → 분으로 변환하는 유틸 메서드
-	private static int parseTimeToMinutes(String hhmm) {
-		int hour = Integer.parseInt(hhmm.substring(0, 2));
-		int minute = Integer.parseInt(hhmm.substring(2, 4));
-		return hour * 60 + minute;
-	}
-
-	private String getHolidaysQuery(String aptCode, String communityType) {
-		return "SELECT SPECIFIC_REPEAT_TYPE, SPECIFIC_DAY_OF_THE_WEEK, SPECIFIC_DAY_OF_THE_MONTH, SPECIFIC_TYPE, SPECIAL_DAY " +
-			"FROM APT_COMMUNITY_SPECIFIC " +
-			"WHERE APT_CODE = '" + aptCode + "' AND COMMUNITY_TYPE = '" + communityType + "' AND (SPECIFIC_TYPE = '0' OR SPECIFIC_TYPE = '3') " +
-			"order by SPECIFIC_TYPE, SPECIFIC_REPEAT_TYPE, SPECIFIC_DAY_OF_THE_WEEK ASC ";
-	}
-
-	private String getShorteningQuery(String aptCode, String communityType) {
-		return "SELECT SPECIFIC_REPEAT_TYPE, SPECIFIC_DAY_OF_THE_WEEK, SPECIFIC_DAY_OF_THE_MONTH, START_TIME, END_TIME " +
-			"FROM APT_COMMUNITY_SPECIFIC " +
-			"WHERE APT_CODE = '" + aptCode + "' AND COMMUNITY_TYPE = '" + communityType + "' AND SPECIFIC_TYPE = '1'";
-	}
-
-	
-	// 휴일 데이터 클래스
-	 static class Shortening {
-        int repeatType;
-        int dayOfWeek;
-        int dayOfMonth;
-		String StartTime;
-		String EndTime;
-
-        Shortening(int repeatType, int dayOfWeek, int dayOfMonth, String strStartTime, String strEndTime) {
-            this.repeatType = repeatType;
-            this.dayOfWeek = dayOfWeek;
-            this.dayOfMonth = dayOfMonth;
-			this.StartTime = strStartTime;
-			this.EndTime = strEndTime;
-        }
-    }	
-		
-	private int getUUID() {
-         UUID uuid = UUID.randomUUID();
-
-        // UUID의 해시코드로 Int형 고유번호 생성
-    	int uniqueId = Math.abs(uuid.hashCode());
-
-        return uniqueId;
-    }	
-
-
-	public void callDevEntranceRegistrationAPI(String strUserId, String strReservationUserName,
-	 String strReservationUserPhone, String strUUID,  String strDoorId, String strAptCode, String strCommunityType, Connection conn) {
-    			
-		String baseUrl = "http://146.56.179.38/xmobile/villizinei/community/community_api_v6.jsp";
-        String strCallSID = "call_Entrance_api";
-
-        try {
-			    
-            // 쿼리 파라미터 인코딩
-            String query = String.format("SID=%s&strUserId=%s&strReservationUserName=%s&strReservationUserPhone=%s&strUUID=%s&strDoorId=%s&strAptCode=%s&strCommunityType=%s",
-					URLEncoder.encode(strCallSID, "UTF-8"),
-					URLEncoder.encode(strUserId, "UTF-8"),
-                    URLEncoder.encode(strReservationUserName, "UTF-8"),
-                    URLEncoder.encode(strReservationUserPhone, "UTF-8"),
-					URLEncoder.encode(strUUID, "UTF-8"),
-                    URLEncoder.encode(strDoorId, "UTF-8"),
-					URLEncoder.encode(strAptCode, "UTF-8"),
-					URLEncoder.encode(strCommunityType, "UTF-8"));
-					
-					
-            
-            // 전체 URL 생성
-            String urlString = baseUrl + "?" + query;
-            URL url = new URL(urlString);
-			System.out.println("Request URL: " + url);
-
-			HttpURLConnection connAPI = (HttpURLConnection) url.openConnection();
-			connAPI.setRequestMethod("POST");
-
-			// 응답 코드 확인 (실제로 응답을 기다리지 않음)
-			int responseCode = connAPI.getResponseCode();
-			System.out.println("Response Code: " + responseCode);
-
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-	}
-		
-	private String extractValue(String jsonString, String key, String field) {
-		// JSONParser를 사용하여 JSON 문자열을 파싱
-		JSONParser parser = new JSONParser();
-		try {
-			JSONObject jsonObject = (JSONObject) parser.parse(jsonString);
-
-			// 주어진 key에 해당하는 JSONObject를 가져옴
-			JSONObject targetObject = (JSONObject) jsonObject.get(key);
-			if (targetObject != null) {
-				// 주어진 field에 해당하는 값을 가져옴
-				Object value = targetObject.get(field);
-				return value != null ? value.toString() : null; // null 체크 후 문자열로 변환
-			} else {
-				System.out.println("Key not found: " + key);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		return ""; // 값이 없거나 오류가 발생한 경우 null 반환
-	}
-
-	public void callReservationTryAgain(String strReservationId, String strUsreImage){
-
-    			
-		String baseUrl = "http://146.56.179.38/xmobile/villizinei/community/community_api_v11.jsp";
-        String strCallSID = "call_gosk_reservation_api";
-
-        try {
-			    
-            // 쿼리 파라미터 인코딩
-            String query = String.format("SID=%s&ImageURL=%s&ReservationId=%s",
-					URLEncoder.encode(strCallSID, "UTF-8"),
-					URLEncoder.encode(strUsreImage, "UTF-8"),
-					URLEncoder.encode(strReservationId, "UTF-8")
-                    );
-					
-					
-            
-            // 전체 URL 생성
-            String urlString = baseUrl + "?" + query;
-            URL url = new URL(urlString);
-			System.out.println("Request URL: " + url);
-
-			HttpURLConnection connAPI = (HttpURLConnection) url.openConnection();
-			connAPI.setRequestMethod("POST");
-
-			// 응답 코드 확인 (실제로 응답을 기다리지 않음)
-			int responseCode = connAPI.getResponseCode();
-			System.out.println("Response Code: " + responseCode);
-
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-	}	
-
-
-
-    private String defaultIfNull(String value, String defaultValue) {
-        return (value == null || value.trim().isEmpty()) ? defaultValue : value;
-    }
-
-	
-%>
+<%@ include file="./apt_community_common.jsp" %>
 
 <%
 Connection 			conn = null;			// DB Connection Object
 PreparedStatement 	pstmt = null;			// JDBC PreparedStatement Object
 ResultSet 			rs = null;	 			// Query Result Set Object
 
-ResultSetMetaData 	rsMetaData = null;
 IssacWeb					m_issacweb = null;
 
-ResultSet 			rs_votecount = null;	 		// Query Result Set Object
 ResultSet 			rs_community = null;	 		// Query Result Set Object
 
 // Clear out's buffer
@@ -617,9 +62,7 @@ try {
 	conn = DriverManager.getConnection(dbUrl, dbUserId, dbUserPasswd);
 
 	// 운영서버이면 암호화 객체 생성
-	if(isDev() == false) {
-		m_issacweb = new IssacWeb(request);
-	}
+	m_issacweb = createIssacWeb(request);
 	// Get Parameter - SID = query 구분.
 	String strSID = getRequestParam(m_issacweb, request, "SID");
 	printLog("A", "SID : " + strSID);
@@ -660,12 +103,11 @@ try {
             }
 
             // 1. 보안 기기 타입
-            baOutStream.write(strSecurity.getBytes(S_CHARSET));
-            baOutStream.write(COLUMN_DEL);
+            writeColumn(baOutStream, strSecurity);
 
             // 2. 기기 개수
-            baOutStream.write(strSecurityCount.getBytes(S_CHARSET));
-            baOutStream.write(RECORD_DEL);
+            writeText(baOutStream, strSecurityCount);
+            writeRecord(baOutStream);
 		}
 
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
@@ -848,23 +290,9 @@ try {
 
 		//해당 하는 커뮤니티에 자리, 시작시간, 종료시간, 시간 간격을 먼저 조회하기
 		if(!strCommunityOpertaionHours.contentEquals("")) {
-			SimpleDateFormat sdfOperationHours = new SimpleDateFormat("yyyyMMdd");		
-			Date dateOperationHours = sdfOperationHours.parse(strDate);
-			Calendar calendarOperationHours = Calendar.getInstance();
-			calendarOperationHours.setTime(dateOperationHours);
-
-			// 요일 확인 (1: 일요일, 2: 월요일, ..., 7: 토요일)
-			int dayOfWeekOperationHours = calendarOperationHours.get(Calendar.DAY_OF_WEEK);
-
-			if (dayOfWeekOperationHours == Calendar.SATURDAY || dayOfWeekOperationHours == Calendar.SUNDAY) {
-				// 주말인 경우
-				strStartTime = extractValue(strCommunityOpertaionHours, "WEEKEND", "start");
-				strEndTime = extractValue(strCommunityOpertaionHours, "WEEKEND", "end");
-			} else {
-				// 평일인 경우
-				strStartTime = extractValue(strCommunityOpertaionHours, "WEEKDAY", "start");
-				strEndTime = extractValue(strCommunityOpertaionHours, "WEEKDAY", "end");
-			}
+			String[] arrOperationTime = getOperationTimeRange(strCommunityOpertaionHours, strDate);
+			strStartTime = arrOperationTime[0];
+			strEndTime = arrOperationTime[1];
 		}
 		
 		nIntervalMinutes = Integer.parseInt(strReserveTimeInterval);	
@@ -882,7 +310,6 @@ try {
 
 		List<Shortening> shortenings = new ArrayList<Shortening>();
 
-		rsMetaData = rs.getMetaData();
 
 		// 먼저 휴일인지를 체크 holidays, strDate 값으로 휴일을 비교
       	// 날짜 형식을 지정하여 SimpleDateFormat 객체 생성
@@ -1024,7 +451,6 @@ try {
 
 		pstmt = conn.prepareStatement(strSelectedReservationQuery);
 		rs = pstmt.executeQuery();
-		rsMetaData = rs.getMetaData();
 		
 		for(int nRow = 0; rs.next(); nRow++) {
 			String strPlaceName =  rs.getString(1);
@@ -1040,7 +466,6 @@ try {
 
 		pstmt = conn.prepareStatement(strHolidaysQuery);
 		rs = pstmt.executeQuery();
-		rsMetaData = rs.getMetaData();
 		
 		List<Holiday> holidays = new ArrayList<Holiday>();
 
@@ -1056,36 +481,7 @@ try {
 				isHolidaysType = true;
 			}
 
-			String strHoliDaysDayOfWeek = rs.getString(2);
-			String strHolidaysDayOfMonth = rs.getString(3);
-			String strSpecificType = rs.getString(4);
-			String strSpecialDay = rs.getString(5);
-			int nSpecificRepeatType = -1;
-			int nHoliDaysDayOfWeek = -1;
-			int nHolidaysDayOfMonth = -1;
-			int nSpecificType = -1;
-
-			if(strRepeatType != null && !strRepeatType.contentEquals("")){
-				nSpecificRepeatType = Integer.parseInt(strRepeatType);
-			}
-
-			if(strHoliDaysDayOfWeek != null && !strHoliDaysDayOfWeek.contentEquals("")){
-				nHoliDaysDayOfWeek = Integer.parseInt(strHoliDaysDayOfWeek);
-			}
-
-			if(strHolidaysDayOfMonth != null && !strHolidaysDayOfMonth.contentEquals("")){
-				nHolidaysDayOfMonth = Integer.parseInt(strHolidaysDayOfMonth);
-			}
-
-			if(strSpecificType != null && !strSpecificType.contentEquals("")){
-				nSpecificType = Integer.parseInt(strSpecificType);
-			}
-
-			if(strSpecialDay == null) {
-				strSpecialDay = "";
-			}
-
-        	holidays.add(new Holiday(nSpecificRepeatType, nHoliDaysDayOfWeek, nHolidaysDayOfMonth, nSpecificType, strSpecialDay)); // 매주 월요일
+			holidays.add(createHolidayFromResultSet(rs));
 		}
 
 		// 자리, 시간, 예약건을 조합해서 json타입으로 변환
@@ -1514,8 +910,7 @@ try {
 		
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		baOutStream.write(jsonArray.toString().getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, jsonArray.toString());
 
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(m_issacweb, baOutStream, outStream);
@@ -1808,7 +1203,7 @@ try {
 			}
 		}
 		
-		baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
+		writeText(baOutStream, Integer.toString(nRet));
  	
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(m_issacweb, baOutStream, outStream);
@@ -1877,17 +1272,15 @@ try {
         if(!strErrorMessage.equals("")) {
             ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-            // baOutStream.write("0".getBytes(S_CHARSET)); // 조회 성공 여부
-            // baOutStream.write(COLUMN_DEL);
+            // writeText(baOutStream, "0"); // 조회 성공 여부
+            // writeColumnDel(baOutStream);
 
-            // baOutStream.write(strErrorMessage.getBytes(S_CHARSET)); // 에러 메시지
-            // baOutStream.write(COLUMN_DEL);
+            // writeText(baOutStream, strErrorMessage); // 에러 메시지
+            // writeColumnDel(baOutStream);
 
             // 기존 필드 빈값 처리
-			baOutStream.write("0".getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write("".getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);		
+			writeColumn(baOutStream, "0");
+			writeColumn(baOutStream, "");
 
             returnData(m_issacweb, baOutStream, outStream);
             return;
@@ -2153,18 +1546,16 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 		
-		// baOutStream.write("1".getBytes(S_CHARSET)); // 조회 성공 여부
-		baOutStream.write(resultCnt.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		// writeText(baOutStream, "1"); // 조회 성공 여부
+		writeColumn(baOutStream, resultCnt);
 
-		// baOutStream.write("".getBytes(S_CHARSET)); // 에러 메시지
-		// baOutStream.write(COLUMN_DEL);
+		// writeText(baOutStream, ""); // 에러 메시지
+		// writeColumnDel(baOutStream);
 
-		// baOutStream.write(resultCnt.getBytes(S_CHARSET));
- 		// baOutStream.write(COLUMN_DEL);	
+		// writeText(baOutStream, resultCnt);
+ 		// writeColumnDel(baOutStream);
 		
-		baOutStream.write(strImageURL.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);	
+		writeColumn(baOutStream, strImageURL);
  	
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(m_issacweb, baOutStream, outStream);
@@ -2179,8 +1570,7 @@ try {
 		}
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		baOutStream.write(strManualURL.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strManualURL);
 
 		returnData(m_issacweb, baOutStream, outStream);
 	}else if(strSID.contentEquals("register_user_gender")){
@@ -2266,8 +1656,7 @@ try {
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 		
-		baOutStream.write(Integer.toString(nRet).getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, Integer.toString(nRet));
 	
 		// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
 		returnData(m_issacweb, baOutStream, outStream);
@@ -2352,8 +1741,7 @@ try {
 		}
 
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-		baOutStream.write(strData.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strData);
 
 		returnData(m_issacweb, baOutStream, outStream);
 
@@ -2378,7 +1766,6 @@ try {
 		// 불가능한 날짜가 겹칠 수 있어서 List에서 Set 타입으로 바꿨습니다
 		Set<String> dateRange = new LinkedHashSet<String>();
 
-		rsMetaData = rs.getMetaData();
 
 		for (int nRow = 0; rs.next(); nRow++) {
 			String strStartDate = rs.getString(1); // yyyyMMdd
@@ -2588,7 +1975,6 @@ try {
 		pstmt = conn.prepareStatement(strHolidaysQuery);
 		rs_community = pstmt.executeQuery();
 
-		rsMetaData = rs_community.getMetaData();
 		// 휴무일을 조합하는 문자열
 		String strHolidays = "";
 		printLog("D","strHolidaysQuery : " +strHolidaysQuery);
@@ -2645,16 +2031,14 @@ try {
 				isEmpty = false;
 				printLog("D","formattedDateYYYYMMDD : " +formattedDateYYYYMMDD);
 
-				baOutStream.write(formattedDateYYYYMMDD.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				writeColumn(baOutStream, formattedDateYYYYMMDD);
 			}
 			checkDate.add(Calendar.DAY_OF_MONTH, 1);
 		}
 
 		for (String unavailableDate : dateRange) {
-			baOutStream.write(unavailableDate.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(RECORD_DEL);
+			writeColumn(baOutStream, unavailableDate);
+			writeRecord(baOutStream);
 
 			printLog("A","unavailableDate : "+ unavailableDate);
 		}
@@ -2740,8 +2124,7 @@ try {
 
 		// 결과 디버깅 출력
 		for (String month : targetMonths) {
-			baOutStream.write(Integer.toString(remainingCounts.get(month)).getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, Integer.toString(remainingCounts.get(month)));
 		}
 
 		returnData(m_issacweb, baOutStream, outStream);
@@ -2776,10 +2159,8 @@ try {
 		
 		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 
-		baOutStream.write(strMinPeople.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
-		baOutStream.write(strMaxPeople.getBytes(S_CHARSET));
-		baOutStream.write(COLUMN_DEL);
+		writeColumn(baOutStream, strMinPeople);
+		writeColumn(baOutStream, strMaxPeople);
 		
 
 		returnData(m_issacweb, baOutStream, outStream);
@@ -2800,7 +2181,6 @@ try {
 		pstmt = conn.prepareStatement(strHolidaysQuery);
 		rs_community = pstmt.executeQuery();
 
-		rsMetaData = rs_community.getMetaData();
 		// 휴무일을 조합하는 문자열
 		String strHolidays = "";
 				printLog("D","strHolidaysQuery : " +strHolidaysQuery);
@@ -2809,31 +2189,8 @@ try {
 		// 자바 1.7이전 버전에서는 switch문에 문자열이 안 됨...
 		// int 타입으로 변경
 		for(int nHoliDaysRow = 0; rs_community.next(); nHoliDaysRow++) {
-			String strRepeatType =  rs_community.getString(1);
-			String strHoliDaysDayOfWeek = rs_community.getString(2);
-			String strHolidaysDayOfMonth = rs_community.getString(3);
-			String strSpecificType = rs_community.getString(4);
-			String strSpecialDay = rs_community.getString(5);
-			int nSpecificRepeatType = -1;
-			int nHoliDaysDayOfWeek = -1;
-			int nHolidaysDayOfMonth = -1;
-			int nSpecificType = -1;
-			if(strRepeatType != null && !strRepeatType.contentEquals("")){
-				nSpecificRepeatType = Integer.parseInt(strRepeatType);
-			}
-			if(strHoliDaysDayOfWeek != null && !strHoliDaysDayOfWeek.contentEquals("")){
-				nHoliDaysDayOfWeek = Integer.parseInt(strHoliDaysDayOfWeek);
-			}
-			if(strHolidaysDayOfMonth != null && !strHolidaysDayOfMonth.contentEquals("")){
-				nHolidaysDayOfMonth = Integer.parseInt(strHolidaysDayOfMonth);
-			}
-			if(strSpecificType != null && !strSpecificType.contentEquals("")){
-				nSpecificType = Integer.parseInt(strSpecificType);
-			}
-			if(strSpecialDay == null) {
-				strSpecialDay = "";
-			}
-			holidays.add(new Holiday(nSpecificRepeatType, nHoliDaysDayOfWeek, nHolidaysDayOfMonth, nSpecificType, strSpecialDay)); // 매주 월요일					
+			Holiday holiday = createHolidayFromResultSet(rs_community);
+			holidays.add(holiday); // 매주 월요일					
 		}
 
 
@@ -2874,19 +2231,17 @@ try {
 				isEmpty = false;
 				printLog("D","formattedDateYYYYMMDD : " +formattedDateYYYYMMDD);
 
-				baOutStream.write(formattedDateYYYYMMDD.getBytes(S_CHARSET));
-				baOutStream.write(COLUMN_DEL);
+				writeColumn(baOutStream, formattedDateYYYYMMDD);
 			}
 
 			checkDate.add(Calendar.DAY_OF_MONTH, 1);
 		}
 
 		if(isEmpty){
-			baOutStream.write(" ".getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
+			writeColumn(baOutStream, " ");
 		}
 
-		baOutStream.write(RECORD_DEL);
+		writeRecord(baOutStream);
 		returnData(m_issacweb, baOutStream, outStream);
 
 
@@ -2894,19 +2249,12 @@ try {
 
 
 }catch(Exception e) {
-	ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
-	String errMsg = "Exception Msg = " + e.getMessage();
-	baOutStream.write(errMsg.getBytes(S_CHARSET));
-	printLog("A", " ###### errMsg  = #####" + errMsg);
-
-	// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-	returnData(m_issacweb, baOutStream, outStream);
+	// 예외 메시지를 빌리진아이 포맷으로 전송
+	sendError(m_issacweb, e, outStream);
 }
 finally {
 	// Release a database resources
-	if(rs != null) { try { rs.close(); } catch(Exception ignore) {} }
-	if(pstmt != null) { try { pstmt.close(); } catch(Exception ignore) {} }
-	if(conn != null) { try { conn.close(); } catch(Exception ignore) {} }
+	closeQuietly(rs, pstmt, conn);
 }
 %>
 
