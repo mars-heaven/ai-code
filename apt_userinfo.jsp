@@ -19,6 +19,7 @@
 <%@ page import="java.util.ArrayList" %>
 <%@ page import="java.util.List" %>
 <%@ page import="java.sql.SQLException" %>
+<%@ page import="org.json.simple.JSONArray" %>
 
 <%!
 
@@ -148,36 +149,24 @@ try {
 
 		// 에러 실행
         if(!strErrorMessage.equals("")) {
-            ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+            JSONObject jsonData = new JSONObject();
+            JSONArray dataArr = new JSONArray();
 
-            baOutStream.write("0".getBytes(S_CHARSET)); // 조회 성공 여부
-            baOutStream.write(COLUMN_DEL);
+            JSONObject jsonItem = new JSONObject();
+            jsonItem.put("result", "0");             // 조회 성공 여부
+            jsonItem.put("errorMessage", strErrorMessage); // 에러 메시지
+            jsonItem.put("name", "");                // 이름
+            jsonItem.put("photoExists", "0");        // 얼굴 등록 여부
+            jsonItem.put("phone", "");               // 전화번호
+            jsonItem.put("gender", "0");             // 성별
+            jsonItem.put("uuid", "");                // UUID
+            jsonItem.put("imageUrl", "");            // 이미지 URL
+            dataArr.add(jsonItem);
 
-            baOutStream.write(strErrorMessage.getBytes(S_CHARSET)); // 에러 메시지
-            baOutStream.write(COLUMN_DEL);
-
-            // 기존 필드 빈값 처리
-            baOutStream.write("".getBytes(S_CHARSET)); // 이름
-            baOutStream.write(COLUMN_DEL);
-
-            baOutStream.write("0".getBytes(S_CHARSET)); // 얼굴 등록 여부
-            baOutStream.write(COLUMN_DEL);
-
-            baOutStream.write("".getBytes(S_CHARSET)); // 전화번호
-            baOutStream.write(COLUMN_DEL);
-
-            baOutStream.write("0".getBytes(S_CHARSET)); // 성별
-            baOutStream.write(COLUMN_DEL);
-
-            baOutStream.write("".getBytes(S_CHARSET)); // UUID
-            baOutStream.write(COLUMN_DEL);
-
-            baOutStream.write("".getBytes(S_CHARSET)); // 이미지 URL
-            baOutStream.write(COLUMN_DEL);
-
-            baOutStream.write(RECORD_DEL);
-
-            returnData(m_issacweb, baOutStream, outStream);
+            resJson.put("RESULT", "SUCCESS");
+            jsonData.put("list", dataArr);
+            resJson.put("DATA", jsonData);
+            returnJson(response, resJson);
             return;
         }
 
@@ -374,33 +363,19 @@ try {
 		// - 응답 순서:
 		//   조회 성공 여부 / 에러 메시지 / 이름 / 얼굴 등록 여부 / 전화번호 / 성별 / UUID / 이미지URL
 		// =========================================================
-		ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
+		JSONObject jsonData = new JSONObject();
+		JSONArray dataArr = new JSONArray();
 
-		baOutStream.write("1".getBytes(S_CHARSET)); // 조회 성공 여부
-		baOutStream.write(COLUMN_DEL);
-
-		baOutStream.write("".getBytes(S_CHARSET)); // 에러 메시지
-		baOutStream.write(COLUMN_DEL);
-
-		baOutStream.write(strUserName.getBytes(S_CHARSET)); // 이름
-		baOutStream.write(COLUMN_DEL);			
-
-		baOutStream.write(strPhotoExists.getBytes(S_CHARSET)); // 얼굴 등록 여부
-		baOutStream.write(COLUMN_DEL);
-
-		baOutStream.write(strPhone.getBytes(S_CHARSET)); // 전화번호
-		baOutStream.write(COLUMN_DEL);
-
-		baOutStream.write(strGender.getBytes(S_CHARSET)); // 성별
-		baOutStream.write(COLUMN_DEL);	
-
-		baOutStream.write(strUUID.getBytes(S_CHARSET)); // UUID
-		baOutStream.write(COLUMN_DEL);		
-
-		baOutStream.write(strImageURL.getBytes(S_CHARSET)); // 이미지URL
-		baOutStream.write(COLUMN_DEL);		
-
-		baOutStream.write(RECORD_DEL);
+		JSONObject jsonItemSelf = new JSONObject();
+		jsonItemSelf.put("result", "1");                 // 조회 성공 여부
+		jsonItemSelf.put("errorMessage", "");            // 에러 메시지
+		jsonItemSelf.put("name", strUserName);           // 이름
+		jsonItemSelf.put("photoExists", strPhotoExists); // 얼굴 등록 여부
+		jsonItemSelf.put("phone", strPhone);             // 전화번호
+		jsonItemSelf.put("gender", strGender);           // 성별
+		jsonItemSelf.put("uuid", strUUID);               // UUID
+		jsonItemSelf.put("imageUrl", strImageURL);       // 이미지URL
+		dataArr.add(jsonItemSelf);
 
 		// =========================================================
 		// - ✅✅✅ 세대원 목록 ✅✅✅
@@ -534,41 +509,36 @@ try {
 			// 응답 순서:
 			// 이름 / 사진등록건수 / 전화번호 / 성별 / UUID / 이미지URL
 			// -----------------------------------------------------
-			baOutStream.write("1".getBytes(S_CHARSET)); // 성공 여부
-			baOutStream.write(COLUMN_DEL);
-
-			baOutStream.write("".getBytes(S_CHARSET)); // 에러 메시지
-			baOutStream.write(COLUMN_DEL);
-
-			baOutStream.write(residentMemberInfo.strName.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);							
-			baOutStream.write(strPhotoExists.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(residentMemberInfo.strUserPhone.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strGender.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);
-			baOutStream.write(strUUID.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);						
-			baOutStream.write(strImageURL.getBytes(S_CHARSET));
-			baOutStream.write(COLUMN_DEL);	
-			baOutStream.write(RECORD_DEL);							
+			JSONObject jsonItem = new JSONObject();
+			jsonItem.put("result", "1");                             // 성공 여부
+			jsonItem.put("errorMessage", "");                        // 에러 메시지
+			jsonItem.put("name", residentMemberInfo.strName);        // 이름
+			jsonItem.put("photoExists", strPhotoExists);             // 얼굴 등록 여부
+			jsonItem.put("phone", residentMemberInfo.strUserPhone);  // 전화번호
+			jsonItem.put("gender", strGender);                       // 성별
+			jsonItem.put("uuid", strUUID);                           // UUID
+			jsonItem.put("imageUrl", strImageURL);                   // 이미지URL
+			dataArr.add(jsonItem);							
 			}
 
 			// =========================================================
 			// 8. 최종 응답 반환
 			// =========================================================
-			returnData(m_issacweb, baOutStream, outStream);
+			resJson.put("RESULT", "SUCCESS");
+			jsonData.put("list", dataArr);
+			resJson.put("DATA", jsonData);
+			returnJson(response, resJson);
 
 		}
 	}
 } catch(Exception e) {
-	// 출력할 데이터
-	ByteArrayOutputStream baOutStream = new ByteArrayOutputStream();
 	String errMsg = "Exception Msg = " + e.getMessage();
-	baOutStream.write(errMsg.getBytes(S_CHARSET));
-	// 빌리진아이 포맷에 맞게 데이터 조립한 후, 클라이언트로 전송..
-	returnData(m_issacweb, baOutStream, outStream);
+	printLog("A", TAG + errMsg);
+
+	resJson.put("RESULT", "FAIL");
+	resJson.put("ERRMSG", e.getMessage());
+	// 데이터 조립한 후, 클라이언트로 전송..
+	returnJson(response, resJson);
 }
 finally {
 	// Release a database resources
