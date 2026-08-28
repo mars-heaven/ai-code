@@ -3165,6 +3165,11 @@ try {
 		// COMMIT 후 autoCommit이 이미 원복됐는지
 		boolean isAutoCommitRestored = false;
 
+		// 동일 시설·동일 날짜 동시 예약 요청 잠금 상태
+		boolean isReservationLockAcquired = false;
+		// GET_LOCK / RELEASE_LOCK에 사용할 잠금 키
+		String strReservationLockKey = "";
+
 		// 앱/서버에서 사용하는 주문번호 성격의 결제 ID
 		String strPaymentId = "";
 		// Bootpay에서 내려주는 영수증 ID
@@ -3563,16 +3568,79 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 예약 시작");
 								+ ", membershipId : " + strMembershipId
 								+ ", paymentId : " + strPaymentId);
 
-					try { 
+					try {
 						// 결제 여부와 관계없이 예약/회원권 DB 작업을 하나의 트랜잭션으로 묶는다.
 						conn.setAutoCommit(false);
 						isTransactionStarted = true;
 
 						printLog("A", "[STEP 1][SUCCESS] 트랜잭션 시작 성공" + " - autoCommit : false");
+
+						// =========================================================
+						// 동일 시설·동일 날짜 동시 예약 직렬화 잠금
+						// - 잠금 이전의 중복/시간충돌 사전 검사는 밀리초 단위 동시 요청이
+						//   함께 통과할 수 있으므로, 잠금을 획득한 뒤 같은 검사를 다시 수행한다.
+						// - 마감(중복)으로 확인되면 예약 INSERT와 결제 승인 모두 진입하지 못한다.
+						// - 잠금은 COMMIT(또는 rollback) 후에 해제해 다음 대기 요청이
+						//   반영된 예약 건수를 보고 판단하게 한다.
+						// =========================================================
+						strReservationLockKey = "reservation_schedule:"
+													+ strAptCode + ":"
+													+ strAptCommunityType + ":"
+													+ strDate;
+
+						String strReservationLockQuery = "SELECT GET_LOCK(?, 10)";
+
+						pstmt = conn.prepareStatement(strReservationLockQuery);
+						pstmt.setString(1, strReservationLockKey);
+						rs = pstmt.executeQuery();
+
+						int nReservationLockResult = 0;
+
+						if(rs.next()) {
+							nReservationLockResult = rs.getInt(1);
+						}
+
+						printLog("A", "[STEP 1][CHECK] 예약 동시 요청 잠금 결과"
+									+ " - lockKey : " + strReservationLockKey
+									+ ", lockResult : " + nReservationLockResult);
+
+						if(nReservationLockResult != 1) {
+							throw new Exception("예약이 처리 중입니다. 잠시 후 다시 시도해주세요.");
+						}
+
+						isReservationLockAcquired = true;
+
+						// 잠금 획득 후 중복/시간충돌 재확인 (사전 검사와 동일한 조건)
+						pstmt = conn.prepareStatement(strQueryReservationCheck);
+						rs = pstmt.executeQuery();
+
+						int nLockedReservationCount = 0;
+
+						if(rs.next()) {
+							nLockedReservationCount = rs.getInt(1);
+						}
+
+						printLog("A", "[STEP 1][CHECK] 잠금 획득 후 예약 중복 재확인"
+									+ " - lockKey : " + strReservationLockKey
+									+ ", duplicateCount : " + nLockedReservationCount);
+
+						if(nLockedReservationCount > 0) {
+							throw new Exception("죄송합니다. 선택하신 자리는 이미 예약되었습니다. 다른 자리를 선택해 주세요.");
+						}
+
 					} catch(Exception transactionStartException) {
-						printLog("A", "[STEP 1][FAIL] DB 트랜잭션 시작 실패"
+						printLog("A", "[STEP 1][FAIL] DB 트랜잭션 시작 또는 예약 잠금 처리 실패"
 									+ " - message : " + transactionStartException.getMessage()
 									+ ", exception : " + transactionStartException.toString());
+
+						// 마감/처리중 안내 메시지는 사용자에게 그대로 전달한다.
+						String strTransactionStartMessage = transactionStartException.getMessage();
+
+						if(strTransactionStartMessage != null &&
+							(strTransactionStartMessage.contentEquals("예약이 처리 중입니다. 잠시 후 다시 시도해주세요.") ||
+							 strTransactionStartMessage.contentEquals("죄송합니다. 선택하신 자리는 이미 예약되었습니다. 다른 자리를 선택해 주세요."))) {
+							throw transactionStartException;
+						}
 
 						throw new Exception("DB 트랜잭션 시작에 실패했습니다.", transactionStartException);
 					}
@@ -4108,6 +4176,22 @@ printLog("A", "*** time test - " + strPaymentId + " : 6 예약처리 완료");
 								+ ", isPaymentSaved : " + isPaymentSaved);
 
 				// =========================================================
+				// COMMIT 후 예약 잠금 즉시 해제
+				// =========================================================
+				if(isReservationLockAcquired && strReservationLockKey != null && !strReservationLockKey.contentEquals("")) {
+
+					String strReleaseLockQuery = "SELECT RELEASE_LOCK(?)";
+
+					pstmt = conn.prepareStatement(strReleaseLockQuery);
+					pstmt.setString(1, strReservationLockKey);
+					rs = pstmt.executeQuery();
+
+					isReservationLockAcquired = false;
+
+					printLog("A", "[TRANSACTION][END] reservation_community_schedule 예약 잠금 해제" + " - lockKey : " + strReservationLockKey);
+				}
+
+				// =========================================================
 				// COMMIT 직후 autoCommit 원복
 				// =========================================================
 				conn.setAutoCommit(true);
@@ -4501,6 +4585,24 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			}
 		}
 		finally {
+			// 예외 경로에서도 예약 잠금이 남지 않도록 해제한다. (catch의 rollback 이후 시점)
+			try {
+				if(isReservationLockAcquired && strReservationLockKey != null && !strReservationLockKey.contentEquals("")) {
+
+					String strReleaseLockQuery = "SELECT RELEASE_LOCK(?)";
+
+					pstmt = conn.prepareStatement(strReleaseLockQuery);
+					pstmt.setString(1, strReservationLockKey);
+					rs = pstmt.executeQuery();
+
+					isReservationLockAcquired = false;
+
+					printLog("A", "[TRANSACTION][END] reservation_community_schedule 예약 잠금 해제" + " - lockKey : " + strReservationLockKey);
+				}
+			} catch(Exception releaseLockException) {
+				printLog("A", "[TRANSACTION][FAIL] reservation_community_schedule 예약 잠금 해제 실패" + " - exception : " + releaseLockException.toString());
+			}
+
 			// 트랜잭션을 시작했던 요청은 커넥션 재사용에 영향이 없도록 AutoCommit을 원복한다.
 			try {
 				if(isTransactionStarted && !isAutoCommitRestored) {
@@ -4514,7 +4616,7 @@ printLog("A", "*** time test - " + strPaymentId + " : 9 얼굴등록 처리 종�
 			} catch(Exception autoCommitException) {
 				printLog("A", "[TRANSACTION][FAIL] reservation_community_schedule autoCommit 원복 실패" + " - exception : " + autoCommitException.toString());
 			}
-		}	
+		}
 	} else if(strSID.contentEquals("create_partner_payment")) {
 		String strUserId = getRequestParam(request, "UserId");
 		String strAptCode = getRequestParam(request, "AptCode");

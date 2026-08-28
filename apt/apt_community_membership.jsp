@@ -1399,11 +1399,25 @@ printLog("A", "*** time test - " + strPaymentId + " : 1 구매 시작");
 			boolean isNeedPayment = "1".contentEquals(strNeedToPay);
 			boolean hasMaxPurchaseLimit = strMaxPurchaseLimit != null && !strMaxPurchaseLimit.trim().contentEquals("") && !"0".contentEquals(strMaxPurchaseLimit.trim());
 
+			// 잠금 획득 후 구매 개수 재확인에서 사용하므로 INSERT 이전에 미리 숫자로 변환해둔다.
+			if(hasMaxPurchaseLimit) {
+				try {
+					nMaxPurchaseLimit = Integer.parseInt(strMaxPurchaseLimit.trim());
+				} catch(Exception maxLimitParseException) {
+					printLog("A", "purchase_membership MAX_PURCHASE_LIMIT 숫자 변환 실패"
+									+ " - membershipId : " + strMembershipId
+									+ ", maxPurchaseLimit : " + strMaxPurchaseLimit);
+
+					nMaxPurchaseLimit = 0;
+					hasMaxPurchaseLimit = false;
+				}
+			}
+
 			printLog("A", "purchase_membership 구매 가능 개수 설정"
 							+ " - membershipId : " + strMembershipId
 							+ ", maxPurchaseLimit : " + strMaxPurchaseLimit
 							+ ", hasMaxPurchaseLimit : " + hasMaxPurchaseLimit);
-				
+
 			// 이용권 구매가능 최대 갯수가 있는 경우(ex. GX 강습 정원 마감) 마감여부를 먼저 체크함
 			if(strPurchasableMaxCnt != null && !strPurchasableMaxCnt.contentEquals("")) {
 				String strMembershipQuery = "";
@@ -1815,35 +1829,17 @@ printLog("A", "purchase_membership 이용권 사용기간 - 앱에서 선택한 
 					conn.setAutoCommit(false);
 					isTransactionStarted = true;
 
-					String strLockStartDate = strStartDate != null && strStartDate.length() >= 8 ? strStartDate.substring(0, 8) : "";
+					// 동시 구매 직렬화 잠금 키 : 시설(APT_CODE + COMMUNITY_TYPE) 단위
+					// - 좌석 마감 검사는 시설 전체(APT_CODE + COMMUNITY_TYPE + PLACE),
+					//   정원(PURCHASABLE_MAX_COUNT) 마감 검사는 회원권 전체를 대상으로 하므로
+					//   좌석별/사용자별 키로는 서로 다른 사용자가 서로 다른 잠금을 잡아
+					//   정원 검사를 동시에 통과해 인원수가 초과되는 문제가 있었다.
+					// - 두 검사 범위를 모두 포함하는 시설 단위 키 하나로 직렬화한다.
+					strPurchaseLockKey = "purchase_membership:"
+											+ strAptCode + ":"
+											+ strCommunityType;
 
-					String strLockEndDate = strEndDate != null && strEndDate.length() >= 8 ? strEndDate.substring(0, 8) : "";
-
-					if(strSeat != null && !strSeat.trim().contentEquals("")) {
-
-						// 좌석이 있는 회원권:
-						// 동일 시설·동일 좌석·동일 이용기간 중복 방지
-						strPurchaseLockKey = "purchase_membership_seat:"
-												+ strAptCode + ":"
-												+ strCommunityType + ":"
-												+ strSeat.trim() + ":"
-												+ strLockStartDate + ":"
-												+ strLockEndDate;
-
-					} else {
-
-						// 좌석이 없는 회원권:
-						// 동일 이용자·동일 회원권 중복 구매 방지
-						strPurchaseLockKey =
-							"purchase_membership_user:"
-							+ strAptCode + ":"
-							+ strMembershipId + ":"
-							+ strUserDong + ":"
-							+ strUserHo + ":"
-							+ strReservationUserName;
-					}
-
-					String strPurchaseLockQuery = "SELECT GET_LOCK(?, 5)";
+					String strPurchaseLockQuery = "SELECT GET_LOCK(?, 10)";
 
 					pstmt = conn.prepareStatement(strPurchaseLockQuery);
 
@@ -1914,6 +1910,47 @@ printLog("A", "purchase_membership 이용권 사용기간 - 앱에서 선택한 
 						}
 					}
 
+					// =========================================================
+					// 잠금 획득 후 정원(이용권 구매가능 최대 갯수) 재확인
+					// - 잠금 이전의 사전 체크는 밀리초 단위 동시 요청이 함께 통과할 수 있으므로
+					//   잠금을 획득한 상태에서 다시 확인해 마감 시 INSERT/결제 진입을 차단한다.
+					// =========================================================
+					if(strPurchasableMaxCnt != null && !strPurchasableMaxCnt.contentEquals("")) {
+
+						String strLockedCapacityQuery = "";
+						strLockedCapacityQuery += " SELECT COUNT(USER_ID) ";
+						strLockedCapacityQuery += " FROM APT_COMMUNITY_MEMBERSHIP_USER_LIST ";
+						strLockedCapacityQuery += " WHERE MEMBERSHIP_ID = ? ";
+						strLockedCapacityQuery += " AND (CANCEL_DATE IS NULL OR CANCEL_DATE = '') ";
+
+						pstmt = conn.prepareStatement(strLockedCapacityQuery);
+						pstmt.setString(1, strMembershipId);
+
+						rs = pstmt.executeQuery();
+
+						int nLockedCapacityCount = 0;
+
+						if(rs.next()) {
+							nLockedCapacityCount = rs.getInt(1);
+						}
+
+						printLog("A", "[STEP 1][CHECK] 잠금 획득 후 정원 재확인"
+										+ " - lockKey : " + strPurchaseLockKey
+										+ ", membershipId : " + strMembershipId
+										+ ", currentCount : " + nLockedCapacityCount
+										+ ", maxCount : " + strPurchasableMaxCnt);
+
+						if(nLockedCapacityCount >= Integer.parseInt(strPurchasableMaxCnt)) {
+
+							printLog("A", "[STEP 1][FAIL] 잠금 획득 후 정원 마감 확인"
+											+ " - membershipId : " + strMembershipId
+											+ ", currentCount : " + nLockedCapacityCount
+											+ ", maxCount : " + strPurchasableMaxCnt);
+
+							throw new Exception("이용권이 마감되었습니다.");
+						}
+					}
+
 					if(nMaxPurchaseLimit > 0) {
 
 						String strLockedPurchaseCountQuery = "";
@@ -1961,7 +1998,14 @@ printLog("A", "purchase_membership 이용권 사용기간 - 앱에서 선택한 
 									+ " - message : " + transactionStartException.getMessage()
 									+ ", exception : " + transactionStartException.toString());
 
-					if(transactionStartException.getMessage() != null && transactionStartException.getMessage().contentEquals("회원권 구매가 처리 중입니다. 잠시 후 다시 시도해주세요.")) {
+					// 마감/처리중 안내 메시지는 사용자에게 그대로 전달한다.
+					String strTransactionStartMessage = transactionStartException.getMessage();
+
+					if(strTransactionStartMessage != null &&
+						(strTransactionStartMessage.contentEquals("회원권 구매가 처리 중입니다. 잠시 후 다시 시도해주세요.") ||
+						 strTransactionStartMessage.contentEquals("해당 자리는 마감되었습니다. 다른 자리를 선택해주세요.") ||
+						 strTransactionStartMessage.contentEquals("이용권이 마감되었습니다.") ||
+						 strTransactionStartMessage.contentEquals("해당 회원권의 구매 가능 개수를 초과했습니다."))) {
 						throw transactionStartException;
 					}
 
