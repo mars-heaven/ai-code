@@ -27,6 +27,9 @@ private object Routes {
     const val CLIENTS = "clients"
     const val ITEMS = "items"
     const val EMPLOYEES = "employees"
+    const val WORK_ORDER = "work_order"
+    const val WORK_LOG = "work_log"
+    const val PROGRESS = "progress"
     const val RATES = "rates/{employeeId}/{employeeName}"
 
     fun rates(employeeId: Long, employeeName: String): String {
@@ -65,10 +68,25 @@ private fun JangbuApp() {
 
         composable(Routes.HOME) {
             HomeScreen(
+                onWorkLog = { nav.navigate(Routes.WORK_LOG) },
+                onWorkOrder = { nav.navigate(Routes.WORK_ORDER) },
+                onProgress = { nav.navigate(Routes.PROGRESS) },
                 onClients = { nav.navigate(Routes.CLIENTS) },
                 onItems = { nav.navigate(Routes.ITEMS) },
                 onEmployees = { nav.navigate(Routes.EMPLOYEES) }
             )
+        }
+
+        composable(Routes.WORK_ORDER) {
+            WorkOrderScreen(onBack = { nav.popBackStack() })
+        }
+
+        composable(Routes.WORK_LOG) {
+            WorkLogScreen(onBack = { nav.popBackStack() })
+        }
+
+        composable(Routes.PROGRESS) {
+            ProgressScreen(onBack = { nav.popBackStack() })
         }
 
         composable(Routes.CLIENTS) {

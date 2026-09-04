@@ -129,6 +129,10 @@ interface WorkLogDao {
     @Query("SELECT IFNULL(SUM(qty), 0) FROM work_logs WHERE workDate BETWEEN :from AND :to")
     fun observeQtySum(from: Int, to: Int): Flow<Int>
 
+    /** 한 일감에 지금까지 처리된 수량 합계 (완료 여부 판단에 씁니다) */
+    @Query("SELECT IFNULL(SUM(qty), 0) FROM work_logs WHERE workOrderId = :workOrderId")
+    suspend fun sumQtyByOrder(workOrderId: Long): Int
+
     @Insert
     suspend fun insert(log: WorkLog): Long
 

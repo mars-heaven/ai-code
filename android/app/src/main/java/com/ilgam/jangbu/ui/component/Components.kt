@@ -115,22 +115,27 @@ fun BigButton(
     sub: String? = null,
     kind: BigButtonKind = BigButtonKind.Normal,
     enabled: Boolean = true,
-    big: Boolean = false
+    big: Boolean = false,
+    /** 목록에서 고른 항목임을 표시합니다(파란 테두리와 연한 파란 바탕). */
+    selected: Boolean = false
 ) {
-    val bg = when (kind) {
-        BigButtonKind.Primary -> Accent
-        BigButtonKind.Normal -> CardBg
-        BigButtonKind.Danger -> AlertBg
+    val bg = when {
+        selected -> AccentSoft
+        kind == BigButtonKind.Primary -> Accent
+        kind == BigButtonKind.Danger -> AlertBg
+        else -> CardBg
     }
-    val fg = when (kind) {
-        BigButtonKind.Primary -> OnAccent
-        BigButtonKind.Normal -> Ink
-        BigButtonKind.Danger -> Alert
+    val fg = when {
+        selected -> AccentDark
+        kind == BigButtonKind.Primary -> OnAccent
+        kind == BigButtonKind.Danger -> Alert
+        else -> Ink
     }
-    val borderColor = when (kind) {
-        BigButtonKind.Primary -> Accent
-        BigButtonKind.Normal -> Line
-        BigButtonKind.Danger -> Alert
+    val borderColor = when {
+        selected -> Accent
+        kind == BigButtonKind.Primary -> Accent
+        kind == BigButtonKind.Danger -> Alert
+        else -> Line
     }
 
     Surface(
@@ -269,6 +274,36 @@ fun ListRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 color = trailingColor
+            )
+        }
+    }
+}
+
+/**
+ * 진행률 막대 — 대상 수량 대비 얼마나 처리했는지 한눈에 보여 줍니다.
+ * 숫자(남은 수량)와 함께 써서 막대만으로 판단하지 않게 합니다.
+ */
+@Composable
+fun ProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+    done: Boolean = false
+) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(18.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(SurfaceAlt)
+    ) {
+        val ratio = progress.coerceIn(0f, 1f)
+        if (ratio > 0f) {
+            Box(
+                Modifier
+                    .fillMaxWidth(ratio)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(if (done) Good else Accent)
             )
         }
     }

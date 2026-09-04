@@ -44,6 +44,9 @@ class HomeViewModel(repo: JangbuRepository) : ViewModel() {
 
 @Composable
 fun HomeScreen(
+    onWorkLog: () -> Unit,
+    onWorkOrder: () -> Unit,
+    onProgress: () -> Unit,
     onClients: () -> Unit,
     onItems: () -> Unit,
     onEmployees: () -> Unit
@@ -81,14 +84,14 @@ fun HomeScreen(
         BigButton(
             text = "작업 등록",
             sub = "누가 · 무엇을 · 몇 장",
-            onClick = { showComingSoon = "작업 등록" },
+            onClick = onWorkLog,
             kind = BigButtonKind.Primary,
             big = true
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BigButton("일감 접수", { showComingSoon = "일감 접수" }, Modifier.weight(1f))
-            BigButton("진행 현황", { showComingSoon = "진행 현황" }, Modifier.weight(1f))
+            BigButton("일감 접수", onWorkOrder, Modifier.weight(1f))
+            BigButton("진행 현황", onProgress, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             BigButton("급여 정산", { showComingSoon = "급여 정산" }, Modifier.weight(1f))

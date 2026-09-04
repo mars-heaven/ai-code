@@ -70,7 +70,7 @@ class JangbuRepository(private val db: JangbuDatabase) {
             ?: throw IllegalArgumentException("일감을 찾을 수 없습니다")
         val wage = rates.effectiveWage(employeeId, order.itemId) ?: 0L
 
-        logs.insert(
+        val id = logs.insert(
             WorkLog(
                 workOrderId = workOrderId,
                 employeeId = employeeId,
@@ -80,17 +80,35 @@ class JangbuRepository(private val db: JangbuDatabase) {
                 memo = memo
             )
         )
+
+        // 목표 수량을 다 채웠으면 자동으로 완료 처리합니다.
+        refreshOrderStatus(workOrderId)
+        id
     }
 
-    /** 목표 수량을 다 채웠으면 일감을 완료로 바꿉니다. */
-    suspend fun refreshOrderStatus(workOrderId: Long, doneQty: Int) {
+    /** 처리 수량이 목표에 닿았는지 보고 일감 상태를 맞춥니다. */
+    suspend fun refreshOrderStatus(workOrderId: Long) {
         val order = orders.getById(workOrderId) ?: return
+        if (order.status == WorkOrderStatus.CANCELED) return
+
+        val doneQty = logs.sumQtyByOrder(workOrderId)
         val newStatus =
             if (doneQty >= order.targetQty) WorkOrderStatus.DONE else WorkOrderStatus.IN_PROGRESS
-        if (order.status != newStatus && order.status != WorkOrderStatus.CANCELED) {
+        if (order.status != newStatus) {
             orders.updateStatus(workOrderId, newStatus)
         }
     }
+
+    /** 잘못 넣은 작업 기록 지우기 — 이미 정산된 건은 지울 수 없습니다. */
+    suspend fun deleteWorkLog(logId: Long, workOrderId: Long): Boolean = db.withTransaction {
+        val deleted = logs.deleteIfNotSettled(logId)
+        if (deleted > 0) refreshOrderStatus(workOrderId)
+        deleted > 0
+    }
+
+    /** 적용될 공임 단가 미리 보기 (저장 전에 금액을 보여 주기 위함) */
+    suspend fun previewWage(employeeId: Long, itemId: Long): Long =
+        rates.effectiveWage(employeeId, itemId) ?: 0L
 
     // ------------------------------------------------------------------
     // 급여 마감 — 아직 정산 안 된 작업만 묶습니다(중복 지급 방지).
