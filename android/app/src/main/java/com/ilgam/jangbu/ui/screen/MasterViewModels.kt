@@ -34,11 +34,17 @@ class ClientViewModel(private val repo: JangbuRepository) : ViewModel() {
                 return@launch
             }
             if (id.isBlank()) {
-                repo.clients.insert(Client(name = trimmed, phone = phone.trim(), memo = memo.trim()))
+                repo.saveClient(
+                    Client(name = trimmed, phone = phone.trim(), memo = memo.trim()),
+                    isNew = true
+                )
                 _message.value = "$trimmed 등록했습니다"
             } else {
                 val current = repo.clients.getById(id) ?: return@launch
-                repo.clients.update(current.copy(name = trimmed, phone = phone.trim(), memo = memo.trim()))
+                repo.saveClient(
+                    current.copy(name = trimmed, phone = phone.trim(), memo = memo.trim()),
+                    isNew = false
+                )
                 _message.value = "$trimmed 수정했습니다"
             }
         }
@@ -46,7 +52,7 @@ class ClientViewModel(private val repo: JangbuRepository) : ViewModel() {
 
     fun remove(client: Client) {
         viewModelScope.launch {
-            repo.clients.deactivate(client.id)
+            repo.deactivateClient(client.id)
             _message.value = "${client.name} 목록에서 뺐습니다"
         }
     }
@@ -75,11 +81,17 @@ class EmployeeViewModel(private val repo: JangbuRepository) : ViewModel() {
                 return@launch
             }
             if (id.isBlank()) {
-                repo.employees.insert(Employee(name = trimmed, phone = phone.trim(), memo = memo.trim()))
+                repo.saveEmployee(
+                    Employee(name = trimmed, phone = phone.trim(), memo = memo.trim()),
+                    isNew = true
+                )
                 _message.value = "$trimmed 등록했습니다"
             } else {
                 val current = repo.employees.getById(id) ?: return@launch
-                repo.employees.update(current.copy(name = trimmed, phone = phone.trim(), memo = memo.trim()))
+                repo.saveEmployee(
+                    current.copy(name = trimmed, phone = phone.trim(), memo = memo.trim()),
+                    isNew = false
+                )
                 _message.value = "$trimmed 수정했습니다"
             }
         }
@@ -87,7 +99,7 @@ class EmployeeViewModel(private val repo: JangbuRepository) : ViewModel() {
 
     fun remove(employee: Employee) {
         viewModelScope.launch {
-            repo.employees.deactivate(employee.id)
+            repo.deactivateEmployee(employee.id)
             _message.value = "${employee.name} 목록에서 뺐습니다"
         }
     }
@@ -135,26 +147,28 @@ class ItemViewModel(private val repo: JangbuRepository) : ViewModel() {
                     _message.value = "$client $item 은 이미 있습니다"
                     return@launch
                 }
-                repo.items.insert(
+                repo.saveItem(
                     Item(
                         clientId = clientId,
                         name = item,
                         chargeUnitPrice = charge,
                         defaultWageUnitPrice = wage,
                         unitLabel = unit
-                    )
+                    ),
+                    isNew = true
                 )
                 _message.value = "$client $item 등록했습니다"
             } else {
                 val current = repo.items.getById(id) ?: return@launch
-                repo.items.update(
+                repo.saveItem(
                     current.copy(
                         clientId = clientId,
                         name = item,
                         chargeUnitPrice = charge,
                         defaultWageUnitPrice = wage,
                         unitLabel = unit
-                    )
+                    ),
+                    isNew = false
                 )
                 _message.value = "$client $item 수정했습니다"
             }
@@ -163,7 +177,7 @@ class ItemViewModel(private val repo: JangbuRepository) : ViewModel() {
 
     fun remove(row: ItemRow) {
         viewModelScope.launch {
-            repo.items.deactivate(row.id)
+            repo.deactivateItem(row.id)
             _message.value = "${row.name} 목록에서 뺐습니다"
         }
     }

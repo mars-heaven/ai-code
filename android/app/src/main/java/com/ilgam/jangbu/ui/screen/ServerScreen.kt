@@ -16,11 +16,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ilgam.jangbu.JangbuApplication
 import com.ilgam.jangbu.server.*
 import com.ilgam.jangbu.ui.component.*
 import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.theme.*
 import com.ilgam.jangbu.util.Prefs
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -36,6 +38,7 @@ class ServerViewModel(private val context: Context) : ViewModel() {
     private val auth = AuthRepository(context)
     private val shops = ShopRepository()
     private val prefs = Prefs(context)
+    private val app = context.applicationContext as JangbuApplication
 
     private val _user = MutableStateFlow(auth.currentUser())
     val user: StateFlow<SignedInUser?> = _user
@@ -58,10 +61,32 @@ class ServerViewModel(private val context: Context) : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    /**
+     * 서버와 맞추는 일이 잘 되고 있는지.
+     * 맞추기는 나중에 시작될 수도 있어서, 시작될 때마다 그쪽 소식을 따라 옮겨 담습니다.
+     */
+    private val _syncState = MutableStateFlow(SyncState.STOPPED)
+    val syncState: StateFlow<SyncState> = _syncState
+
+    private var syncWatch: Job? = null
+
+    private fun watchSync() {
+        syncWatch?.cancel()
+        val worker = app.sync
+        if (worker == null) {
+            _syncState.value = SyncState.STOPPED
+            return
+        }
+        syncWatch = viewModelScope.launch {
+            worker.state.collect { _syncState.value = it }
+        }
+    }
+
     val serverReady: Boolean get() = ServerAvailability.ready(context)
     val unavailableReason: String get() = ServerAvailability.unavailableReason(context)
 
     init {
+        watchSync()
         if (serverReady && _user.value != null) refreshShop()
     }
 
@@ -84,6 +109,8 @@ class ServerViewModel(private val context: Context) : ViewModel() {
     fun signOut() {
         viewModelScope.launch {
             auth.signOut()
+            app.stopSync()
+            watchSync()
             prefs.clearShop()
             _user.value = null
             _shop.value = null
@@ -101,12 +128,23 @@ class ServerViewModel(private val context: Context) : ViewModel() {
             _shop.value = membership
             if (membership == null) {
                 prefs.clearShop()
+                app.stopSync()
+                watchSync()
                 _members.value = emptyList()
             } else {
                 prefs.shopId = membership.shopId
                 prefs.shopName = membership.shopName
                 prefs.shopIsOwner = membership.isOwner
                 _members.value = shops.members(membership.shopId)
+
+                app.startSync(membership.shopId)
+                watchSync()
+                // 사장님이 처음 붙었고 서버가 비어 있으면, 지금 폰의 장부를 통째로 올립니다.
+                val worker = app.sync
+                if (membership.isOwner && worker != null && !worker.serverHasData()) {
+                    worker.pushEverything()
+                    _message.value = "지금 장부를 서버에 올렸습니다"
+                }
             }
             _busy.value = false
         }
@@ -179,6 +217,7 @@ fun ServerScreen(onBack: () -> Unit) {
     val members by vm.members.collectAsState()
     val invite by vm.invite.collectAsState()
     val busy by vm.busy.collectAsState()
+    val syncState by vm.syncState.collectAsState()
     val message by vm.message.collectAsState()
     val error by vm.error.collectAsState()
 
@@ -327,6 +366,32 @@ fun ServerScreen(onBack: () -> Unit) {
                         BigButton(text = "새 번호 만들기", onClick = { vm.makeInvite() }, enabled = !busy)
                     }
                 }
+
+                SectionTitle("맞추기")
+                ListRow(
+                    title = "서버와 맞추는 중",
+                    subtitle = when (syncState) {
+                        SyncState.RUNNING -> "잘 되고 있습니다"
+                        SyncState.CONNECTING -> "연결하는 중입니다"
+                        SyncState.ERROR -> "연결이 끊겼습니다. 인터넷을 확인해 주세요"
+                        SyncState.STOPPED -> "멈춰 있습니다"
+                    },
+                    badge = {
+                        StatusPill(
+                            when (syncState) {
+                                SyncState.RUNNING -> "연결됨"
+                                SyncState.CONNECTING -> "연결 중"
+                                SyncState.ERROR -> "끊김"
+                                SyncState.STOPPED -> "멈춤"
+                            },
+                            when (syncState) {
+                                SyncState.RUNNING -> PillKind.Good
+                                SyncState.ERROR -> PillKind.Alert
+                                else -> PillKind.Neutral
+                            }
+                        )
+                    }
+                )
 
                 SectionTitle("계정")
                 BigButton(text = "다시 불러오기", onClick = { vm.refreshShop() }, enabled = !busy)

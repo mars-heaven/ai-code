@@ -85,6 +85,9 @@ fun HomeScreen(
     val lastBackupAt = remember { prefs.lastBackupAt }
     var speakEnabled by remember { mutableStateOf(prefs.speakEnabled) }
     val shopName = remember { prefs.shopName }
+    // 가족은 보기만 합니다. 적는 버튼은 눌러도 소용없으니 아예 잠급니다.
+    val viewerOnly = remember { prefs.shopId.isNotBlank() && !prefs.shopIsOwner }
+    val canWrite = !viewerOnly
 
     val todayQty by vm.todayQty.collectAsState()
     val remainQty by vm.remainQty.collectAsState()
@@ -98,6 +101,14 @@ fun HomeScreen(
         title = "일감장부",
         subtitle = LocalDate.now().toShortDisplay()
     ) {
+        if (viewerOnly) {
+            ListRow(
+                title = "보기만 할 수 있습니다",
+                subtitle = "적고 마감하는 것은 사장님이 합니다",
+                badge = { StatusPill("가족", PillKind.Neutral) }
+            )
+        }
+
         // 오늘 숫자 — 가장 먼저 눈에 들어와야 하는 두 가지
         ListRow(
             title = "오늘 처리",
@@ -115,14 +126,20 @@ fun HomeScreen(
 
         BigButton(
             text = "작업 등록",
-            sub = "누가 · 무엇을 · 몇 장",
+            sub = if (canWrite) "누가 · 무엇을 · 몇 장" else "사장님만 적을 수 있습니다",
             onClick = onWorkLog,
             kind = BigButtonKind.Primary,
-            big = true
+            big = true,
+            enabled = canWrite
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BigButton("일감 접수", onWorkOrder, Modifier.weight(1f))
+            BigButton(
+                text = "일감 접수",
+                onClick = onWorkOrder,
+                modifier = Modifier.weight(1f),
+                enabled = canWrite
+            )
             BigButton("진행 현황", onProgress, Modifier.weight(1f))
         }
         BigButton(
@@ -150,17 +167,20 @@ fun HomeScreen(
         BigButton(
             text = "거래처",
             sub = if (clientCount == 0) "먼저 등록해 주세요" else "${clientCount}곳",
-            onClick = onClients
+            onClick = onClients,
+            enabled = canWrite
         )
         BigButton(
             text = "품목과 단가",
             sub = if (itemCount == 0) "받을 단가와 공임을 정합니다" else "${itemCount}개",
-            onClick = onItems
+            onClick = onItems,
+            enabled = canWrite
         )
         BigButton(
             text = "직원",
             sub = if (employeeCount == 0) "먼저 등록해 주세요" else "${employeeCount}명",
-            onClick = onEmployees
+            onClick = onEmployees,
+            enabled = canWrite
         )
 
         SectionTitle("설정")

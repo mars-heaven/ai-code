@@ -3,6 +3,7 @@ package com.ilgam.jangbu.data
 import androidx.room.withTransaction
 import com.ilgam.jangbu.data.entity.*
 import com.ilgam.jangbu.util.deletePhotoFile
+import com.ilgam.jangbu.util.newId
 import com.ilgam.jangbu.util.toDbInt
 import java.io.File
 import java.time.LocalDate
@@ -18,6 +19,13 @@ class JangbuRepository(
     private val photoDir: File
 ) {
 
+    /**
+     * 서버에 함께 비출 거울. 서버를 안 쓰면 비어 있습니다.
+     * 로그인해서 업체에 붙으면 그때 끼워집니다.
+     */
+    @Volatile
+    var mirror: JangbuMirror? = null
+
     val clients = db.clientDao()
     val items = db.itemDao()
     val employees = db.employeeDao()
@@ -27,6 +35,7 @@ class JangbuRepository(
     val payrolls = db.payrollDao()
     val invoices = db.invoiceDao()
     val summary = db.summaryDao()
+    private val sync = db.syncDao()
 
     // ------------------------------------------------------------------
     // 일감 접수 — 거래처·품목이 없으면 같이 만들어 줍니다.
@@ -60,8 +69,14 @@ class JangbuRepository(
             memo = memo
         )
         orders.insert(order)
-        order.id
-    }
+        order
+    }.also { order ->
+        mirror?.let { m ->
+            clients.getById(order.clientId)?.let(m::onClient)
+            items.getById(order.itemId)?.let(m::onItem)
+            m.onOrder(order)
+        }
+    }.id
 
     // ------------------------------------------------------------------
     // 직원 작업 등록 — 적용할 공임 단가를 자동으로 찾아 넣습니다.
@@ -90,6 +105,11 @@ class JangbuRepository(
         // 목표 수량을 다 채웠으면 자동으로 완료 처리합니다.
         refreshOrderStatus(workOrderId)
         log.id
+    }.also { id ->
+        mirror?.let { m ->
+            sync.logById(id)?.let(m::onLog)
+            orders.getById(workOrderId)?.let(m::onOrder)
+        }
     }
 
     /** 처리 수량이 목표에 닿았는지 보고 일감 상태를 맞춥니다. */
@@ -102,6 +122,7 @@ class JangbuRepository(
             if (doneQty >= order.targetQty) WorkOrderStatus.DONE else WorkOrderStatus.IN_PROGRESS
         if (order.status != newStatus) {
             orders.updateStatus(workOrderId, newStatus)
+            mirror?.onOrder(order.copy(status = newStatus))
         }
     }
 
@@ -110,6 +131,8 @@ class JangbuRepository(
         val deleted = logs.deleteIfNotSettled(logId)
         if (deleted > 0) refreshOrderStatus(workOrderId)
         deleted > 0
+    }.also { removed ->
+        if (removed) mirror?.onLogRemoved(logId)
     }
 
     /** 적용될 공임 단가 미리 보기 (저장 전에 금액을 보여 주기 위함) */
@@ -142,6 +165,11 @@ class JangbuRepository(
         payrolls.insert(payroll)
         logs.attachToPayroll(payroll.id, employeeId, f, t)
         payroll.id
+    }?.also { payrollId ->
+        mirror?.let { m ->
+            payrolls.getById(payrollId)?.let(m::onPayroll)
+            m.onLogs(sync.logsByPayroll(payrollId))
+        }
     }
 
     /** 전 직원 일괄 마감. 마감된 급여 id 목록을 돌려줍니다. */
@@ -155,13 +183,21 @@ class JangbuRepository(
     }
 
     /** 마감 취소 — 묶음을 풀고 급여 줄을 지웁니다. */
-    suspend fun cancelPayroll(payrollId: String) = db.withTransaction {
-        logs.detachFromPayroll(payrollId)
-        payrolls.delete(payrollId)
+    suspend fun cancelPayroll(payrollId: String) {
+        val attachedIds = sync.logsByPayroll(payrollId).map { it.id }
+        db.withTransaction {
+            logs.detachFromPayroll(payrollId)
+            payrolls.delete(payrollId)
+        }
+        mirror?.let { m ->
+            m.onLogs(sync.logsByIds(attachedIds))
+            m.onPayrollRemoved(payrollId)
+        }
     }
 
     suspend fun markPayrollPaid(payrollId: String, paidDate: LocalDate = LocalDate.now()) {
         payrolls.markPaid(payrollId, paidDate.toDbInt())
+        mirror?.let { m -> payrolls.getById(payrollId)?.let(m::onPayroll) }
     }
 
     // ------------------------------------------------------------------
@@ -190,21 +226,32 @@ class JangbuRepository(
         invoices.insert(invoice)
         logs.attachToInvoice(invoice.id, clientId, f, t)
         invoice.id
+    }?.also { invoiceId ->
+        mirror?.let { m ->
+            invoices.getById(invoiceId)?.let(m::onInvoice)
+            m.onLogs(sync.logsByInvoice(invoiceId))
+        }
     }
 
     /** 계산서 취소 — 묶음을 풀고 붙여 둔 사진 파일까지 정리합니다. */
     suspend fun cancelInvoice(invoiceId: String) {
         val fileNames = invoices.getPhotos(invoiceId).map { it.filePath }
+        val attachedIds = sync.logsByInvoice(invoiceId).map { it.id }
         db.withTransaction {
             logs.detachFromInvoice(invoiceId)
             // invoice_photos 는 CASCADE 로 함께 지워집니다.
             invoices.delete(invoiceId)
         }
         fileNames.forEach { deletePhotoFile(File(photoDir, it)) }
+        mirror?.let { m ->
+            m.onLogs(sync.logsByIds(attachedIds))
+            m.onInvoiceRemoved(invoiceId)
+        }
     }
 
     suspend fun markInvoicePaid(invoiceId: String, paidDate: LocalDate = LocalDate.now()) {
         invoices.markPaid(invoiceId, paidDate.toDbInt())
+        mirror?.let { m -> invoices.getById(invoiceId)?.let(m::onInvoice) }
     }
 
     // ------------------------------------------------------------------
@@ -227,9 +274,57 @@ class JangbuRepository(
     // ------------------------------------------------------------------
     suspend fun setEmployeeRate(employeeId: String, itemId: String, wageUnitPrice: Long?) {
         if (wageUnitPrice == null) {
+            val existing = sync.rateOf(employeeId, itemId)
             rates.clear(employeeId, itemId)
+            existing?.let { mirror?.onRateRemoved(it.id) }
         } else {
-            rates.upsert(EmployeeRate(employeeId = employeeId, itemId = itemId, wageUnitPrice = wageUnitPrice))
+            // 이미 있던 줄이면 그 번호를 그대로 써서 서버에 두 줄이 생기지 않게 합니다.
+            val existing = sync.rateOf(employeeId, itemId)
+            val rate = EmployeeRate(
+                id = existing?.id ?: newId(),
+                employeeId = employeeId,
+                itemId = itemId,
+                wageUnitPrice = wageUnitPrice
+            )
+            rates.upsert(rate)
+            mirror?.onRate(rate)
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 기초 등록 — 거래처·품목·직원
+    // 서버에도 함께 비추기 위해 화면이 아니라 여기를 거치게 합니다.
+    // ------------------------------------------------------------------
+    suspend fun saveClient(client: Client, isNew: Boolean) {
+        if (isNew) clients.insert(client) else clients.update(client)
+        mirror?.onClient(client)
+    }
+
+    suspend fun deactivateClient(id: String) {
+        clients.deactivate(id)
+        mirror?.let { m -> clients.getById(id)?.let(m::onClient) }
+    }
+
+    suspend fun saveEmployee(employee: Employee, isNew: Boolean) {
+        if (isNew) employees.insert(employee) else employees.update(employee)
+        mirror?.onEmployee(employee)
+    }
+
+    suspend fun deactivateEmployee(id: String) {
+        employees.deactivate(id)
+        mirror?.let { m -> employees.getById(id)?.let(m::onEmployee) }
+    }
+
+    suspend fun saveItem(item: Item, isNew: Boolean) {
+        if (isNew) items.insert(item) else items.update(item)
+        mirror?.let { m ->
+            clients.getById(item.clientId)?.let(m::onClient)
+            m.onItem(item)
+        }
+    }
+
+    suspend fun deactivateItem(id: String) {
+        items.deactivate(id)
+        mirror?.let { m -> items.getById(id)?.let(m::onItem) }
     }
 }
