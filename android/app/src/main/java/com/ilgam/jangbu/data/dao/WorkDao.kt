@@ -10,10 +10,10 @@ import kotlinx.coroutines.flow.Flow
 
 /** 일감 목록 한 줄 — 대상 수량과 처리 수량을 함께 담습니다. */
 data class WorkOrderRow(
-    val id: Long,
-    val clientId: Long,
+    val id: String,
+    val clientId: String,
     val clientName: String,
-    val itemId: Long,
+    val itemId: String,
     val itemName: String,
     val unitLabel: String,
     val targetQty: Int,
@@ -61,23 +61,23 @@ interface WorkOrderDao {
     fun observeInProgress(): Flow<List<WorkOrderRow>>
 
     @Query("SELECT * FROM work_orders WHERE id = :id")
-    suspend fun getById(id: Long): WorkOrder?
+    suspend fun getById(id: String): WorkOrder?
 
     @Insert
-    suspend fun insert(order: WorkOrder): Long
+    suspend fun insert(order: WorkOrder)
 
     @Update
     suspend fun update(order: WorkOrder)
 
     @Query("UPDATE work_orders SET status = :status WHERE id = :id")
-    suspend fun updateStatus(id: Long, status: Int)
+    suspend fun updateStatus(id: String, status: Int)
 }
 
 /** 작업 기록 한 줄 (직원·품목 이름 포함) */
 data class WorkLogRow(
-    val id: Long,
-    val workOrderId: Long,
-    val employeeId: Long,
+    val id: String,
+    val workOrderId: String,
+    val employeeId: String,
     val employeeName: String,
     val clientName: String,
     val itemName: String,
@@ -85,8 +85,8 @@ data class WorkLogRow(
     val qty: Int,
     val wageUnitPrice: Long,
     val workDate: Int,
-    val payrollId: Long?,
-    val invoiceId: Long?
+    val payrollId: String?,
+    val invoiceId: String?
 ) {
     val wage: Long get() = qty * wageUnitPrice
 }
@@ -124,20 +124,20 @@ interface WorkLogDao {
         ORDER BY wl.workDate DESC, wl.id DESC
         """
     )
-    fun observeByOrder(workOrderId: Long): Flow<List<WorkLogRow>>
+    fun observeByOrder(workOrderId: String): Flow<List<WorkLogRow>>
 
     @Query("SELECT IFNULL(SUM(qty), 0) FROM work_logs WHERE workDate BETWEEN :from AND :to")
     fun observeQtySum(from: Int, to: Int): Flow<Int>
 
     /** 한 일감에 지금까지 처리된 수량 합계 (완료 여부 판단에 씁니다) */
     @Query("SELECT IFNULL(SUM(qty), 0) FROM work_logs WHERE workOrderId = :workOrderId")
-    suspend fun sumQtyByOrder(workOrderId: Long): Int
+    suspend fun sumQtyByOrder(workOrderId: String): Int
 
     @Insert
-    suspend fun insert(log: WorkLog): Long
+    suspend fun insert(log: WorkLog)
 
     @Query("DELETE FROM work_logs WHERE id = :id AND payrollId IS NULL AND invoiceId IS NULL")
-    suspend fun deleteIfNotSettled(id: Long): Int
+    suspend fun deleteIfNotSettled(id: String): Int
 
     // ---------------------------------------------------------------
     // 정산 묶음 — 여기가 중복 지급·중복 청구를 막는 핵심입니다.
@@ -150,7 +150,7 @@ interface WorkLogDao {
         WHERE payrollId IS NULL AND employeeId = :employeeId AND workDate BETWEEN :from AND :to
         """
     )
-    suspend fun attachToPayroll(payrollId: Long, employeeId: Long, from: Int, to: Int): Int
+    suspend fun attachToPayroll(payrollId: String, employeeId: String, from: Int, to: Int): Int
 
     @Query(
         """
@@ -159,12 +159,12 @@ interface WorkLogDao {
           AND workOrderId IN (SELECT id FROM work_orders WHERE clientId = :clientId)
         """
     )
-    suspend fun attachToInvoice(invoiceId: Long, clientId: Long, from: Int, to: Int): Int
+    suspend fun attachToInvoice(invoiceId: String, clientId: String, from: Int, to: Int): Int
 
     /** 정산 취소 — 묶음을 풀어 다시 미정산 상태로 되돌립니다. */
     @Query("UPDATE work_logs SET payrollId = NULL WHERE payrollId = :payrollId")
-    suspend fun detachFromPayroll(payrollId: Long): Int
+    suspend fun detachFromPayroll(payrollId: String): Int
 
     @Query("UPDATE work_logs SET invoiceId = NULL WHERE invoiceId = :invoiceId")
-    suspend fun detachFromInvoice(invoiceId: Long): Int
+    suspend fun detachFromInvoice(invoiceId: String): Int
 }

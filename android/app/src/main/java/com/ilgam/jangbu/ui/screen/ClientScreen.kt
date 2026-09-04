@@ -9,6 +9,7 @@ import com.ilgam.jangbu.data.entity.Client
 import com.ilgam.jangbu.ui.component.*
 import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.rememberRepository
+import com.ilgam.jangbu.util.NEW_ID
 
 @Composable
 fun ClientScreen(onBack: () -> Unit) {
@@ -42,7 +43,7 @@ fun ClientScreen(onBack: () -> Unit) {
         bottomBar = {
             BigButton(
                 text = "새 거래처 등록",
-                onClick = { editing = Client(name = "") },
+                onClick = { editing = Client(id = NEW_ID, name = "") },
                 kind = BigButtonKind.Primary
             )
         }
@@ -72,7 +73,7 @@ private fun ClientEditScreen(
     onSave: (name: String, phone: String, memo: String) -> Unit,
     onBack: () -> Unit
 ) {
-    val isNew = client.id == 0L
+    val isNew = client.id.isBlank()
     var name by remember(client.id) { mutableStateOf(client.name) }
     var phone by remember(client.id) { mutableStateOf(client.phone) }
     var memo by remember(client.id) { mutableStateOf(client.memo) }

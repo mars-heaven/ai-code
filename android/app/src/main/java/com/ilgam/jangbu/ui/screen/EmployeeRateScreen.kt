@@ -19,7 +19,7 @@ import com.ilgam.jangbu.util.toMoneyWon
  */
 @Composable
 fun EmployeeRateScreen(
-    employeeId: Long,
+    employeeId: String,
     employeeName: String,
     onBack: () -> Unit
 ) {
@@ -29,8 +29,8 @@ fun EmployeeRateScreen(
     val message by vm.message.collectAsState()
 
     // 입력 중인 값. 저장 버튼을 눌러야 반영됩니다.
-    var inputs by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
-    var loadedFor by remember { mutableStateOf<List<Long>>(emptyList()) }
+    var inputs by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var loadedFor by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // 목록이 처음 들어왔을 때만 현재 값으로 채웁니다(입력 중 덮어쓰지 않도록).
     LaunchedEffect(rates.map { it.itemId }) {

@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 
 /** 아직 지급 정산되지 않은 직원별 공임 합계 */
 data class UnpaidWageRow(
-    val employeeId: Long,
+    val employeeId: String,
     val employeeName: String,
     val totalQty: Int,
     val totalWage: Long
@@ -28,8 +28,8 @@ data class SettledDetailRow(
 
 /** 급여 지급 이력 한 줄 */
 data class PayrollRow(
-    val id: Long,
-    val employeeId: Long,
+    val id: String,
+    val employeeId: String,
     val employeeName: String,
     /** 정산서를 문자로 보낼 때 씁니다. 없으면 빈 글자 */
     val employeePhone: String,
@@ -71,7 +71,7 @@ interface PayrollDao {
           AND wl.workDate BETWEEN :from AND :to
         """
     )
-    suspend fun sumUnpaidWage(employeeId: Long, from: Int, to: Int): Long
+    suspend fun sumUnpaidWage(employeeId: String, from: Int, to: Int): Long
 
     @Query(
         """
@@ -98,27 +98,27 @@ interface PayrollDao {
         ORDER BY i.name
         """
     )
-    suspend fun details(payrollId: Long): List<SettledDetailRow>
+    suspend fun details(payrollId: String): List<SettledDetailRow>
 
     @Insert
-    suspend fun insert(payroll: Payroll): Long
+    suspend fun insert(payroll: Payroll)
 
     @Update
     suspend fun update(payroll: Payroll)
 
     @Query("SELECT * FROM payrolls WHERE id = :id")
-    suspend fun getById(id: Long): Payroll?
+    suspend fun getById(id: String): Payroll?
 
     @Query("UPDATE payrolls SET paid = 1, paidDate = :paidDate WHERE id = :id")
-    suspend fun markPaid(id: Long, paidDate: Int)
+    suspend fun markPaid(id: String, paidDate: Int)
 
     @Query("DELETE FROM payrolls WHERE id = :id")
-    suspend fun delete(id: Long)
+    suspend fun delete(id: String)
 }
 
 /** 아직 청구되지 않은 거래처별 금액 합계 */
 data class UnbilledRow(
-    val clientId: Long,
+    val clientId: String,
     val clientName: String,
     val totalQty: Int,
     val totalAmount: Long
@@ -135,8 +135,8 @@ data class BillingDetailRow(
 
 /** 계산서 이력 한 줄 */
 data class InvoiceRow(
-    val id: Long,
-    val clientId: Long,
+    val id: String,
+    val clientId: String,
     val clientName: String,
     /** 명세서를 문자로 보낼 때 씁니다. 없으면 빈 글자 */
     val clientPhone: String,
@@ -183,7 +183,7 @@ interface InvoiceDao {
         ORDER BY i.name
         """
     )
-    fun observeUnbilledDetail(clientId: Long, from: Int, to: Int): Flow<List<BillingDetailRow>>
+    fun observeUnbilledDetail(clientId: String, from: Int, to: Int): Flow<List<BillingDetailRow>>
 
     @Query(
         """
@@ -194,7 +194,7 @@ interface InvoiceDao {
           AND wl.workDate BETWEEN :from AND :to
         """
     )
-    suspend fun sumUnbilled(clientId: Long, from: Int, to: Int): Long
+    suspend fun sumUnbilled(clientId: String, from: Int, to: Int): Long
 
     @Query(
         """
@@ -234,33 +234,33 @@ interface InvoiceDao {
         ORDER BY i.name
         """
     )
-    suspend fun details(invoiceId: Long): List<SettledDetailRow>
+    suspend fun details(invoiceId: String): List<SettledDetailRow>
 
     @Insert
-    suspend fun insert(invoice: Invoice): Long
+    suspend fun insert(invoice: Invoice)
 
     @Update
     suspend fun update(invoice: Invoice)
 
     @Query("SELECT * FROM invoices WHERE id = :id")
-    suspend fun getById(id: Long): Invoice?
+    suspend fun getById(id: String): Invoice?
 
     @Query("UPDATE invoices SET paid = 1, paidDate = :paidDate WHERE id = :id")
-    suspend fun markPaid(id: Long, paidDate: Int)
+    suspend fun markPaid(id: String, paidDate: Int)
 
     @Query("DELETE FROM invoices WHERE id = :id")
-    suspend fun delete(id: Long)
+    suspend fun delete(id: String)
 
     // 계산서 사진
     @Query("SELECT * FROM invoice_photos WHERE invoiceId = :invoiceId ORDER BY takenAt")
-    fun observePhotos(invoiceId: Long): Flow<List<InvoicePhoto>>
+    fun observePhotos(invoiceId: String): Flow<List<InvoicePhoto>>
 
     @Query("SELECT * FROM invoice_photos WHERE invoiceId = :invoiceId")
-    suspend fun getPhotos(invoiceId: Long): List<InvoicePhoto>
+    suspend fun getPhotos(invoiceId: String): List<InvoicePhoto>
 
     @Insert
-    suspend fun insertPhoto(photo: InvoicePhoto): Long
+    suspend fun insertPhoto(photo: InvoicePhoto)
 
     @Query("DELETE FROM invoice_photos WHERE id = :id")
-    suspend fun deletePhoto(id: Long)
+    suspend fun deletePhoto(id: String)
 }

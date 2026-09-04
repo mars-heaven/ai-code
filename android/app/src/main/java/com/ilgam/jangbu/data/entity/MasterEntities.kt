@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.ilgam.jangbu.util.newId
 
 /** 거래처. 일감을 등록하다가 없는 이름이 나오면 그 자리에서 만들어집니다. */
 @Entity(
@@ -11,7 +12,7 @@ import androidx.room.PrimaryKey
     indices = [Index(value = ["name"], unique = true)]
 )
 data class Client(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @PrimaryKey val id: String = newId(),
     val name: String,
     val phone: String = "",
     val memo: String = "",
@@ -39,8 +40,8 @@ data class Client(
     ]
 )
 data class Item(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val clientId: Long,
+    @PrimaryKey val id: String = newId(),
+    val clientId: String,
     val name: String,
     /** 거래처에 청구하는 단가 (예: 바지 100원) */
     val chargeUnitPrice: Long,
@@ -58,7 +59,7 @@ data class Item(
     indices = [Index(value = ["name"], unique = true)]
 )
 data class Employee(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @PrimaryKey val id: String = newId(),
     val name: String,
     val phone: String = "",
     val memo: String = "",
@@ -93,8 +94,8 @@ data class Employee(
     ]
 )
 data class EmployeeRate(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val employeeId: Long,
-    val itemId: Long,
+    @PrimaryKey val id: String = newId(),
+    val employeeId: String,
+    val itemId: String,
     val wageUnitPrice: Long
 )

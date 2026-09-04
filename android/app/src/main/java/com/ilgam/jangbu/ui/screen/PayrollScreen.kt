@@ -246,4 +246,4 @@ fun PayrollScreen(onBack: () -> Unit) {
     }
 }
 
-private data class PayrollRowTarget(val id: Long, val name: String)
+private data class PayrollRowTarget(val id: String, val name: String)

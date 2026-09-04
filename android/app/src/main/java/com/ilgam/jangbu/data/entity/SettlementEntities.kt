@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.ilgam.jangbu.util.newId
 
 /**
  * 거래처 계산서(청구) 묶음.
@@ -22,8 +23,8 @@ import androidx.room.PrimaryKey
     indices = [Index(value = ["clientId"]), Index(value = ["issuedDate"])]
 )
 data class Invoice(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val clientId: Long,
+    @PrimaryKey val id: String = newId(),
+    val clientId: String,
     /** 집계에 사용한 기간 (기록용) yyyyMMdd */
     val periodStart: Int,
     val periodEnd: Int,
@@ -50,8 +51,8 @@ data class Invoice(
     indices = [Index(value = ["invoiceId"])]
 )
 data class InvoicePhoto(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val invoiceId: Long,
+    @PrimaryKey val id: String = newId(),
+    val invoiceId: String,
     val filePath: String,
     val takenAt: Long = System.currentTimeMillis(),
     val memo: String = ""
@@ -74,8 +75,8 @@ data class InvoicePhoto(
     indices = [Index(value = ["employeeId"]), Index(value = ["closedDate"])]
 )
 data class Payroll(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val employeeId: Long,
+    @PrimaryKey val id: String = newId(),
+    val employeeId: String,
     /** 집계에 사용한 기간 (기록용) yyyyMMdd */
     val periodStart: Int,
     val periodEnd: Int,

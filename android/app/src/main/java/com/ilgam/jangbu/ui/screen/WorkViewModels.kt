@@ -84,11 +84,11 @@ class WorkLogViewModel(private val repo: JangbuRepository) : ViewModel() {
     val orders: StateFlow<List<WorkOrderRow>> = repo.orders.observeInProgress()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP), emptyList())
 
-    private val _employeeId = MutableStateFlow<Long?>(null)
-    val employeeId: StateFlow<Long?> = _employeeId
+    private val _employeeId = MutableStateFlow<String?>(null)
+    val employeeId: StateFlow<String?> = _employeeId
 
-    private val _orderId = MutableStateFlow<Long?>(null)
-    val orderId: StateFlow<Long?> = _orderId
+    private val _orderId = MutableStateFlow<String?>(null)
+    val orderId: StateFlow<String?> = _orderId
 
     private val _qty = MutableStateFlow("")
     val qty: StateFlow<String> = _qty
@@ -104,12 +104,12 @@ class WorkLogViewModel(private val repo: JangbuRepository) : ViewModel() {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    fun selectEmployee(id: Long) {
+    fun selectEmployee(id: String) {
         _employeeId.value = id
         refreshWage()
     }
 
-    fun selectOrder(id: Long) {
+    fun selectOrder(id: String) {
         _orderId.value = id
         refreshWage()
     }
@@ -213,8 +213,8 @@ class ProgressViewModel(private val repo: JangbuRepository) : ViewModel() {
     val orders: StateFlow<List<WorkOrderRow>> = repo.orders.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP), emptyList())
 
-    private val _openOrderId = MutableStateFlow<Long?>(null)
-    val openOrderId: StateFlow<Long?> = _openOrderId
+    private val _openOrderId = MutableStateFlow<String?>(null)
+    val openOrderId: StateFlow<String?> = _openOrderId
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val openOrderLogs: StateFlow<List<WorkLogRow>> = _openOrderId
@@ -226,12 +226,12 @@ class ProgressViewModel(private val repo: JangbuRepository) : ViewModel() {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    fun toggleOrder(id: Long) {
+    fun toggleOrder(id: String) {
         _openOrderId.value = if (_openOrderId.value == id) null else id
     }
 
     /** 잘못 넣은 작업 지우기 (정산 전에만 가능) */
-    fun deleteLog(logId: Long, workOrderId: Long) {
+    fun deleteLog(logId: String, workOrderId: String) {
         viewModelScope.launch {
             val ok = repo.deleteWorkLog(logId, workOrderId)
             _message.value =

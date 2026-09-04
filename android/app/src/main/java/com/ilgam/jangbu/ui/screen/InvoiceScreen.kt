@@ -26,7 +26,7 @@ import com.ilgam.jangbu.util.*
 @Composable
 fun InvoiceScreen(
     onBack: () -> Unit,
-    onOpenInvoice: (Long) -> Unit
+    onOpenInvoice: (String) -> Unit
 ) {
     val repo = rememberRepository()
     val vm = jangbuViewModel { InvoiceViewModel(repo) }

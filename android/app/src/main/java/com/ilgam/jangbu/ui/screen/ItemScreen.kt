@@ -10,6 +10,7 @@ import com.ilgam.jangbu.data.dao.ItemRow
 import com.ilgam.jangbu.ui.component.*
 import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.rememberRepository
+import com.ilgam.jangbu.util.NEW_ID
 import com.ilgam.jangbu.util.toMoneyWon
 
 @Composable
@@ -20,7 +21,7 @@ fun ItemScreen(onBack: () -> Unit) {
     val clients by vm.clients.collectAsState()
     val message by vm.message.collectAsState()
 
-    // null 이면 목록. ItemRow(id=0) 이면 신규 등록
+    // null 이면 목록. 번호가 비어 있으면 신규 등록
     var editing by remember { mutableStateOf<ItemRow?>(null) }
 
     val target = editing
@@ -48,7 +49,7 @@ fun ItemScreen(onBack: () -> Unit) {
                 text = "새 품목 등록",
                 onClick = {
                     editing = ItemRow(
-                        id = 0, clientId = 0, clientName = "", name = "",
+                        id = NEW_ID, clientId = NEW_ID, clientName = "", name = "",
                         chargeUnitPrice = 0, defaultWageUnitPrice = 0, unitLabel = "장"
                     )
                 },
@@ -82,7 +83,7 @@ private fun ItemEditScreen(
     onSave: (clientName: String, itemName: String, charge: String, wage: String, unit: String) -> Unit,
     onBack: () -> Unit
 ) {
-    val isNew = row.id == 0L
+    val isNew = row.id.isBlank()
     var clientName by remember(row.id) { mutableStateOf(row.clientName) }
     var itemName by remember(row.id) { mutableStateOf(row.name) }
     var charge by remember(row.id) {

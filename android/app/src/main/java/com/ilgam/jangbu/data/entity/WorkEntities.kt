@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.ilgam.jangbu.util.newId
 
 object WorkOrderStatus {
     const val IN_PROGRESS = 0
@@ -39,9 +40,9 @@ object WorkOrderStatus {
     ]
 )
 data class WorkOrder(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val clientId: Long,
-    val itemId: Long,
+    @PrimaryKey val id: String = newId(),
+    val clientId: String,
+    val itemId: String,
     /** 처리해야 할 목표 수량 */
     val targetQty: Int,
     /** 접수 시점의 청구 단가 (스냅샷) */
@@ -86,18 +87,18 @@ data class WorkOrder(
     ]
 )
 data class WorkLog(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val workOrderId: Long,
-    val employeeId: Long,
+    @PrimaryKey val id: String = newId(),
+    val workOrderId: String,
+    val employeeId: String,
     val qty: Int,
     /** 기록 시점의 공임 단가 (스냅샷) */
     val wageUnitPrice: Long,
     /** yyyyMMdd */
     val workDate: Int,
     /** 급여 정산 묶음. null 이면 아직 지급 정산 안 됨 */
-    val payrollId: Long? = null,
+    val payrollId: String? = null,
     /** 거래처 청구 묶음. null 이면 아직 청구 안 됨 */
-    val invoiceId: Long? = null,
+    val invoiceId: String? = null,
     val memo: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )

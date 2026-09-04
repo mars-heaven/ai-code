@@ -9,11 +9,12 @@ import com.ilgam.jangbu.data.entity.Employee
 import com.ilgam.jangbu.ui.component.*
 import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.rememberRepository
+import com.ilgam.jangbu.util.NEW_ID
 
 @Composable
 fun EmployeeScreen(
     onBack: () -> Unit,
-    onOpenRates: (employeeId: Long, employeeName: String) -> Unit
+    onOpenRates: (employeeId: String, employeeName: String) -> Unit
 ) {
     val repo = rememberRepository()
     val vm = jangbuViewModel { EmployeeViewModel(repo) }
@@ -32,7 +33,7 @@ fun EmployeeScreen(
                 vm.save(target.id, name, phone, memo)
                 editing = null
             },
-            onOpenRates = if (target.id == 0L) null else {
+            onOpenRates = if (target.id.isBlank()) null else {
                 { onOpenRates(target.id, target.name) }
             },
             onBack = { editing = null }
@@ -47,7 +48,7 @@ fun EmployeeScreen(
         bottomBar = {
             BigButton(
                 text = "새 직원 등록",
-                onClick = { editing = Employee(name = "") },
+                onClick = { editing = Employee(id = NEW_ID, name = "") },
                 kind = BigButtonKind.Primary
             )
         }
@@ -78,7 +79,7 @@ private fun EmployeeEditScreen(
     onOpenRates: (() -> Unit)?,
     onBack: () -> Unit
 ) {
-    val isNew = employee.id == 0L
+    val isNew = employee.id.isBlank()
     var name by remember(employee.id) { mutableStateOf(employee.name) }
     var phone by remember(employee.id) { mutableStateOf(employee.phone) }
     var memo by remember(employee.id) { mutableStateOf(employee.memo) }

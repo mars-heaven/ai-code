@@ -38,12 +38,12 @@ private object Routes {
     const val INVOICE_DETAIL = "invoice/{invoiceId}"
     const val RATES = "rates/{employeeId}/{employeeName}"
 
-    fun rates(employeeId: Long, employeeName: String): String {
+    fun rates(employeeId: String, employeeName: String): String {
         val encoded = URLEncoder.encode(employeeName, "UTF-8")
         return "rates/$employeeId/$encoded"
     }
 
-    fun invoiceDetail(invoiceId: Long): String = "invoice/$invoiceId"
+    fun invoiceDetail(invoiceId: String): String = "invoice/$invoiceId"
 }
 
 class MainActivity : ComponentActivity() {
@@ -115,10 +115,10 @@ private fun JangbuApp() {
 
         composable(
             route = Routes.INVOICE_DETAIL,
-            arguments = listOf(navArgument("invoiceId") { type = NavType.LongType })
+            arguments = listOf(navArgument("invoiceId") { type = NavType.StringType })
         ) { entry ->
             InvoiceDetailScreen(
-                invoiceId = entry.arguments?.getLong("invoiceId") ?: 0L,
+                invoiceId = entry.arguments?.getString("invoiceId").orEmpty(),
                 onBack = { nav.popBackStack() }
             )
         }
@@ -153,11 +153,11 @@ private fun JangbuApp() {
         composable(
             route = Routes.RATES,
             arguments = listOf(
-                navArgument("employeeId") { type = NavType.LongType },
+                navArgument("employeeId") { type = NavType.StringType },
                 navArgument("employeeName") { type = NavType.StringType }
             )
         ) { entry ->
-            val id = entry.arguments?.getLong("employeeId") ?: 0L
+            val id = entry.arguments?.getString("employeeId").orEmpty()
             val rawName = entry.arguments?.getString("employeeName").orEmpty()
             val name = runCatching { URLDecoder.decode(rawName, "UTF-8") }.getOrDefault(rawName)
             EmployeeRateScreen(

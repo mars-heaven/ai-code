@@ -14,33 +14,35 @@ interface ClientDao {
     fun observeAll(): Flow<List<Client>>
 
     @Query("SELECT * FROM clients WHERE id = :id")
-    suspend fun getById(id: Long): Client?
+    suspend fun getById(id: String): Client?
 
     @Query("SELECT * FROM clients WHERE name = :name LIMIT 1")
     suspend fun findByName(name: String): Client?
 
     @Insert
-    suspend fun insert(client: Client): Long
+    suspend fun insert(client: Client)
 
     @Update
     suspend fun update(client: Client)
 
     @Query("UPDATE clients SET active = 0 WHERE id = :id")
-    suspend fun deactivate(id: Long)
+    suspend fun deactivate(id: String)
 
     /** 이름으로 찾고 없으면 새로 만듭니다 — 일감 등록 중 자동 등록에 씁니다. */
     @Transaction
-    suspend fun findOrCreate(name: String): Long {
+    suspend fun findOrCreate(name: String): String {
         val trimmed = name.trim()
         findByName(trimmed)?.let { return it.id }
-        return insert(Client(name = trimmed))
+        val client = Client(name = trimmed)
+        insert(client)
+        return client.id
     }
 }
 
 /** 품목을 거래처 이름과 함께 보여주기 위한 조회 결과 */
 data class ItemRow(
-    val id: Long,
-    val clientId: Long,
+    val id: String,
+    val clientId: String,
     val clientName: String,
     val name: String,
     val chargeUnitPrice: Long,
@@ -71,43 +73,43 @@ interface ItemDao {
         ORDER BY i.name
         """
     )
-    fun observeByClient(clientId: Long): Flow<List<ItemRow>>
+    fun observeByClient(clientId: String): Flow<List<ItemRow>>
 
     @Query("SELECT * FROM items WHERE id = :id")
-    suspend fun getById(id: Long): Item?
+    suspend fun getById(id: String): Item?
 
     @Query("SELECT * FROM items WHERE clientId = :clientId AND name = :name LIMIT 1")
-    suspend fun findByClientAndName(clientId: Long, name: String): Item?
+    suspend fun findByClientAndName(clientId: String, name: String): Item?
 
     @Insert
-    suspend fun insert(item: Item): Long
+    suspend fun insert(item: Item)
 
     @Update
     suspend fun update(item: Item)
 
     @Query("UPDATE items SET active = 0 WHERE id = :id")
-    suspend fun deactivate(id: Long)
+    suspend fun deactivate(id: String)
 
     /** 거래처+품목명으로 찾고 없으면 만듭니다. */
     @Transaction
     suspend fun findOrCreate(
-        clientId: Long,
+        clientId: String,
         name: String,
         chargeUnitPrice: Long,
         defaultWageUnitPrice: Long,
         unitLabel: String = "장"
-    ): Long {
+    ): String {
         val trimmed = name.trim()
         findByClientAndName(clientId, trimmed)?.let { return it.id }
-        return insert(
-            Item(
-                clientId = clientId,
-                name = trimmed,
-                chargeUnitPrice = chargeUnitPrice,
-                defaultWageUnitPrice = defaultWageUnitPrice,
-                unitLabel = unitLabel
-            )
+        val item = Item(
+            clientId = clientId,
+            name = trimmed,
+            chargeUnitPrice = chargeUnitPrice,
+            defaultWageUnitPrice = defaultWageUnitPrice,
+            unitLabel = unitLabel
         )
+        insert(item)
+        return item.id
     }
 }
 
@@ -118,31 +120,33 @@ interface EmployeeDao {
     fun observeAll(): Flow<List<Employee>>
 
     @Query("SELECT * FROM employees WHERE id = :id")
-    suspend fun getById(id: Long): Employee?
+    suspend fun getById(id: String): Employee?
 
     @Query("SELECT * FROM employees WHERE name = :name LIMIT 1")
     suspend fun findByName(name: String): Employee?
 
     @Insert
-    suspend fun insert(employee: Employee): Long
+    suspend fun insert(employee: Employee)
 
     @Update
     suspend fun update(employee: Employee)
 
     @Query("UPDATE employees SET active = 0 WHERE id = :id")
-    suspend fun deactivate(id: Long)
+    suspend fun deactivate(id: String)
 
     @Transaction
-    suspend fun findOrCreate(name: String): Long {
+    suspend fun findOrCreate(name: String): String {
         val trimmed = name.trim()
         findByName(trimmed)?.let { return it.id }
-        return insert(Employee(name = trimmed))
+        val employee = Employee(name = trimmed)
+        insert(employee)
+        return employee.id
     }
 }
 
 /** 직원별 공임 화면에 쓰는 조회 결과 — 지정 단가가 없으면 기본공임을 보여줍니다. */
 data class EmployeeRateRow(
-    val itemId: Long,
+    val itemId: String,
     val itemName: String,
     val clientName: String,
     val unitLabel: String,
@@ -165,7 +169,7 @@ interface EmployeeRateDao {
         ORDER BY c.name, i.name
         """
     )
-    fun observeForEmployee(employeeId: Long): Flow<List<EmployeeRateRow>>
+    fun observeForEmployee(employeeId: String): Flow<List<EmployeeRateRow>>
 
     /**
      * 실제 적용할 공임 단가.
@@ -180,11 +184,11 @@ interface EmployeeRateDao {
         )
         """
     )
-    suspend fun effectiveWage(employeeId: Long, itemId: Long): Long?
+    suspend fun effectiveWage(employeeId: String, itemId: String): Long?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(rate: EmployeeRate)
 
     @Query("DELETE FROM employee_rates WHERE employeeId = :employeeId AND itemId = :itemId")
-    suspend fun clear(employeeId: Long, itemId: Long)
+    suspend fun clear(employeeId: String, itemId: String)
 }

@@ -19,7 +19,7 @@ import com.ilgam.jangbu.data.entity.*
         InvoicePhoto::class,
         Payroll::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 abstract class JangbuDatabase : RoomDatabase() {
@@ -41,6 +41,9 @@ abstract class JangbuDatabase : RoomDatabase() {
             Room.databaseBuilder(context.applicationContext, JangbuDatabase::class.java, NAME)
                 // 외래키 제약을 켜서 잘못된 참조가 저장되지 않게 합니다.
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
+                // 자료 번호를 폰 안 일련번호에서 세상에 하나뿐인 번호로 바꾸면서
+                // 표 모양이 달라졌습니다. 아직 시험용 자료뿐이라 옛 장부는 비우고 시작합니다.
+                .fallbackToDestructiveMigration()
                 .build()
     }
 }

@@ -31,7 +31,7 @@ import java.io.File
  * 종이 계산서·영수증을 찍어 두면 나중에 찾을 일이 없습니다.
  */
 @Composable
-fun InvoiceDetailScreen(invoiceId: Long, onBack: () -> Unit) {
+fun InvoiceDetailScreen(invoiceId: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val repo = rememberRepository()
     val vm = jangbuViewModel(key = "invoice-$invoiceId") {

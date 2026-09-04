@@ -47,7 +47,7 @@ class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
     fun setPeriod(period: Period) { _period.value = period }
 
     /** 한 사람만 마감 */
-    fun closeOne(employeeId: Long, employeeName: String) {
+    fun closeOne(employeeId: String, employeeName: String) {
         val p = _period.value
         viewModelScope.launch {
             val id = repo.closePayrollFor(employeeId, p.from, p.to)
@@ -71,7 +71,7 @@ class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
         }
     }
 
-    fun markPaid(payrollId: Long, employeeName: String) {
+    fun markPaid(payrollId: String, employeeName: String) {
         viewModelScope.launch {
             repo.markPayrollPaid(payrollId)
             _message.value = "$employeeName 지급 완료로 표시했습니다"
@@ -79,7 +79,7 @@ class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
     }
 
     /** 잘못 마감했을 때 되돌리기 — 묶음이 풀려 다시 미정산이 됩니다. */
-    fun cancel(payrollId: Long, employeeName: String) {
+    fun cancel(payrollId: String, employeeName: String) {
         viewModelScope.launch {
             repo.cancelPayroll(payrollId)
             _message.value = "$employeeName 마감을 취소했습니다"
@@ -131,8 +131,8 @@ class InvoiceViewModel(private val repo: JangbuRepository) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), emptyList())
 
     /** 계산서를 내기 전에 품목별로 얼마인지 펼쳐 봅니다. */
-    private val _openClientId = MutableStateFlow<Long?>(null)
-    val openClientId: StateFlow<Long?> = _openClientId
+    private val _openClientId = MutableStateFlow<String?>(null)
+    val openClientId: StateFlow<String?> = _openClientId
 
     val openDetail: StateFlow<List<BillingDetailRow>> =
         combine(_openClientId, _period) { id, p -> id to p }
@@ -160,11 +160,11 @@ class InvoiceViewModel(private val repo: JangbuRepository) : ViewModel() {
 
     fun setPeriod(period: Period) { _period.value = period }
 
-    fun toggleClient(clientId: Long) {
+    fun toggleClient(clientId: String) {
         _openClientId.value = if (_openClientId.value == clientId) null else clientId
     }
 
-    fun issue(clientId: Long, clientName: String) {
+    fun issue(clientId: String, clientName: String) {
         val p = _period.value
         viewModelScope.launch {
             val id = repo.issueInvoice(clientId, p.from, p.to)
@@ -175,14 +175,14 @@ class InvoiceViewModel(private val repo: JangbuRepository) : ViewModel() {
         }
     }
 
-    fun markPaid(invoiceId: Long, clientName: String) {
+    fun markPaid(invoiceId: String, clientName: String) {
         viewModelScope.launch {
             repo.markInvoicePaid(invoiceId)
             _message.value = "$clientName 입금 확인했습니다"
         }
     }
 
-    fun cancel(invoiceId: Long, clientName: String) {
+    fun cancel(invoiceId: String, clientName: String) {
         viewModelScope.launch {
             repo.cancelInvoice(invoiceId)
             _message.value = "$clientName 계산서를 취소했습니다"
@@ -195,7 +195,7 @@ class InvoiceViewModel(private val repo: JangbuRepository) : ViewModel() {
 /** 계산서 한 장 — 사진을 찍어 붙이고 입금을 확인합니다. */
 class InvoiceDetailViewModel(
     private val repo: JangbuRepository,
-    private val invoiceId: Long
+    private val invoiceId: String
 ) : ViewModel() {
 
     val photos: StateFlow<List<InvoicePhoto>> = repo.invoices.observePhotos(invoiceId)

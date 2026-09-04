@@ -21,7 +21,7 @@ class ClientViewModel(private val repo: JangbuRepository) : ViewModel() {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    fun save(id: Long, name: String, phone: String, memo: String) {
+    fun save(id: String, name: String, phone: String, memo: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) {
             _message.value = "거래처 이름을 적어 주세요"
@@ -33,7 +33,7 @@ class ClientViewModel(private val repo: JangbuRepository) : ViewModel() {
                 _message.value = "이미 있는 거래처입니다"
                 return@launch
             }
-            if (id == 0L) {
+            if (id.isBlank()) {
                 repo.clients.insert(Client(name = trimmed, phone = phone.trim(), memo = memo.trim()))
                 _message.value = "$trimmed 등록했습니다"
             } else {
@@ -62,7 +62,7 @@ class EmployeeViewModel(private val repo: JangbuRepository) : ViewModel() {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    fun save(id: Long, name: String, phone: String, memo: String) {
+    fun save(id: String, name: String, phone: String, memo: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) {
             _message.value = "직원 이름을 적어 주세요"
@@ -74,7 +74,7 @@ class EmployeeViewModel(private val repo: JangbuRepository) : ViewModel() {
                 _message.value = "이미 있는 직원입니다"
                 return@launch
             }
-            if (id == 0L) {
+            if (id.isBlank()) {
                 repo.employees.insert(Employee(name = trimmed, phone = phone.trim(), memo = memo.trim()))
                 _message.value = "$trimmed 등록했습니다"
             } else {
@@ -108,7 +108,7 @@ class ItemViewModel(private val repo: JangbuRepository) : ViewModel() {
 
     /** 거래처 이름을 직접 적어도 되고(없으면 새로 만듭니다), 목록에서 골라도 됩니다. */
     fun save(
-        id: Long,
+        id: String,
         clientName: String,
         itemName: String,
         chargePrice: String,
@@ -129,7 +129,7 @@ class ItemViewModel(private val repo: JangbuRepository) : ViewModel() {
 
         viewModelScope.launch {
             val clientId = repo.clients.findOrCreate(client)
-            if (id == 0L) {
+            if (id.isBlank()) {
                 val exists = repo.items.findByClientAndName(clientId, item)
                 if (exists != null) {
                     _message.value = "$client $item 은 이미 있습니다"
@@ -173,7 +173,7 @@ class ItemViewModel(private val repo: JangbuRepository) : ViewModel() {
 
 class EmployeeRateViewModel(
     private val repo: JangbuRepository,
-    private val employeeId: Long
+    private val employeeId: String
 ) : ViewModel() {
 
     val rates: StateFlow<List<EmployeeRateRow>> = repo.rates.observeForEmployee(employeeId)
@@ -183,7 +183,7 @@ class EmployeeRateViewModel(
     val message: StateFlow<String?> = _message
 
     /** 빈 값으로 저장하면 지정 단가를 지우고 품목 기본공임을 따릅니다. */
-    fun setRate(itemId: Long, wage: String) {
+    fun setRate(itemId: String, wage: String) {
         val value = wage.trim().toLongOrNull()
         viewModelScope.launch {
             repo.setEmployeeRate(employeeId, itemId, value)

@@ -90,7 +90,7 @@ private fun OrderCard(
     expanded: Boolean,
     onToggle: () -> Unit,
     logs: List<com.ilgam.jangbu.data.dao.WorkLogRow>,
-    onDeleteLog: (Long) -> Unit
+    onDeleteLog: (String) -> Unit
 ) {
     val isDone = order.status == WorkOrderStatus.DONE
 
