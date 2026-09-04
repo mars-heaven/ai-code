@@ -9,9 +9,14 @@ import androidx.compose.ui.unit.dp
 import com.ilgam.jangbu.ui.component.*
 import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.rememberRepository
+import com.ilgam.jangbu.ui.theme.Alert
 import com.ilgam.jangbu.ui.theme.Dimens
 import com.ilgam.jangbu.ui.theme.InkSoft
+import com.ilgam.jangbu.util.VoiceCandidate
+import com.ilgam.jangbu.util.matchByName
+import com.ilgam.jangbu.util.parseQtyFromSpeech
 import com.ilgam.jangbu.util.rememberSpeaker
+import com.ilgam.jangbu.util.removeMatched
 import com.ilgam.jangbu.util.toMoneyWon
 import java.time.LocalDate
 
@@ -35,6 +40,46 @@ fun WorkOrderScreen(onBack: () -> Unit) {
     var wage by remember { mutableStateOf("") }
     var unitLabel by remember { mutableStateOf("장") }
     var dueInDays by remember { mutableStateOf<Int?>(null) }
+    var heard by remember { mutableStateOf<String?>(null) }
+    var voiceNote by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * 말한 문장에서 거래처·품목·수량을 채웁니다.
+     * 이미 등록된 이름만 알아들으므로, 처음 거래하는 곳은 손으로 적어야 합니다.
+     */
+    fun applyVoice(spoken: String) {
+        heard = spoken
+
+        val clientMatch = matchByName(
+            spoken, clients.map { VoiceCandidate(it.name, listOf(it.name)) }
+        )
+        val itemMatch = matchByName(
+            spoken, items.map { VoiceCandidate(it, listOf(it.name)) }
+        )
+
+        clientMatch?.let { (name, _) -> clientName = name }
+        itemMatch?.let { (item, _) ->
+            itemName = item.name
+            // 등록된 품목이면 단가까지 같이 채웁니다.
+            charge = item.chargeUnitPrice.toString()
+            wage = item.defaultWageUnitPrice.toString()
+            unitLabel = item.unitLabel
+            if (clientMatch == null) clientName = item.clientName
+        }
+
+        // 이름 글자를 숫자로 잘못 읽지 않도록 알아들은 이름을 걷어낸 뒤 수량을 읽습니다.
+        val rest = removeMatched(spoken, clientMatch?.second, itemMatch?.second)
+        val amount = parseQtyFromSpeech(rest)
+        if (amount != null && amount > 0) qty = amount.toString()
+
+        voiceNote = when {
+            clientMatch == null && itemMatch == null ->
+                "등록된 거래처·품목을 못 찾았습니다. 직접 적어 주세요"
+            itemMatch == null -> "품목을 못 알아들었습니다. 직접 적어 주세요"
+            amount == null || amount <= 0 -> "수량을 못 알아들었습니다. 직접 적어 주세요"
+            else -> null
+        }
+    }
 
     // 접수 결과를 소리로도 알려 줍니다(설정에서 끌 수 있습니다).
     val speaker = rememberSpeaker()
@@ -71,6 +116,23 @@ fun WorkOrderScreen(onBack: () -> Unit) {
         }
     ) {
         MessageBanner(message, vm::clearMessage)
+
+        // 말로 한 번에 넣기 — 이미 등록된 거래처·품목이면 단가까지 채워집니다.
+        VoiceInputButton(
+            text = "🎤 말로 넣기",
+            sub = "예) 현미사 바지 백 장",
+            onHeard = { applyVoice(it) }
+        )
+        if (heard != null) {
+            Text(
+                "들은 말: $heard",
+                style = MaterialTheme.typography.bodyMedium,
+                color = InkSoft
+            )
+        }
+        voiceNote?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = Alert)
+        }
 
         // 1. 거래처
         SectionTitle("1. 어느 거래처인가요?")

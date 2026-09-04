@@ -17,6 +17,15 @@ data class UnpaidWageRow(
     val totalWage: Long
 )
 
+/** 이미 마감된 정산서의 품목별 명세 한 줄 (급여·계산서 공용) */
+data class SettledDetailRow(
+    val itemName: String,
+    val unitLabel: String,
+    val qty: Int,
+    val unitPrice: Long,
+    val amount: Long
+)
+
 /** 급여 지급 이력 한 줄 */
 data class PayrollRow(
     val id: Long,
@@ -71,6 +80,22 @@ interface PayrollDao {
         """
     )
     fun observeHistory(): Flow<List<PayrollRow>>
+
+    /** 마감된 급여에 묶인 작업을 품목별로 모읍니다(정산서에 적을 명세). */
+    @Query(
+        """
+        SELECT i.name AS itemName, i.unitLabel,
+               SUM(wl.qty) AS qty, wl.wageUnitPrice AS unitPrice,
+               SUM(wl.qty * wl.wageUnitPrice) AS amount
+        FROM work_logs wl
+        JOIN work_orders wo ON wo.id = wl.workOrderId
+        JOIN items i ON i.id = wo.itemId
+        WHERE wl.payrollId = :payrollId
+        GROUP BY i.id, i.name, i.unitLabel, wl.wageUnitPrice
+        ORDER BY i.name
+        """
+    )
+    suspend fun details(payrollId: Long): List<SettledDetailRow>
 
     @Insert
     suspend fun insert(payroll: Payroll): Long
@@ -187,6 +212,22 @@ interface InvoiceDao {
         """
     )
     fun observeUnpaid(): Flow<List<InvoiceRow>>
+
+    /** 발행된 계산서에 묶인 작업을 품목별로 모읍니다(계산서에 적을 명세). */
+    @Query(
+        """
+        SELECT i.name AS itemName, i.unitLabel,
+               SUM(wl.qty) AS qty, wo.chargeUnitPrice AS unitPrice,
+               SUM(wl.qty * wo.chargeUnitPrice) AS amount
+        FROM work_logs wl
+        JOIN work_orders wo ON wo.id = wl.workOrderId
+        JOIN items i ON i.id = wo.itemId
+        WHERE wl.invoiceId = :invoiceId
+        GROUP BY i.id, i.name, i.unitLabel, wo.chargeUnitPrice
+        ORDER BY i.name
+        """
+    )
+    suspend fun details(invoiceId: Long): List<SettledDetailRow>
 
     @Insert
     suspend fun insert(invoice: Invoice): Long

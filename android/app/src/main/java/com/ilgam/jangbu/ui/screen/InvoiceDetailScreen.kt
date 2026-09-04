@@ -42,9 +42,18 @@ fun InvoiceDetailScreen(invoiceId: Long, onBack: () -> Unit) {
     val photos by vm.photos.collectAsState()
     val message by vm.message.collectAsState()
     val canceled by vm.canceled.collectAsState()
+    val statement by vm.statement.collectAsState()
 
     // 계산서를 취소하면 볼 것이 없으므로 목록으로 돌아갑니다.
     LaunchedEffect(canceled) { if (canceled) onBack() }
+
+    // 명세서가 만들어지면 카카오톡·문자 보내기 창을 엽니다.
+    LaunchedEffect(statement) {
+        statement?.let {
+            shareText(context, it.subject, it.body)
+            vm.clearStatement()
+        }
+    }
 
     // 카메라 앱에 넘겨 준 저장 위치. 찍기가 끝나면 이 파일을 목록에 넣습니다.
     var pendingFile by remember { mutableStateOf<File?>(null) }
@@ -140,6 +149,11 @@ fun InvoiceDetailScreen(invoiceId: Long, onBack: () -> Unit) {
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     color = Ink
+                )
+                BigButton(
+                    text = "명세서 보내기",
+                    sub = "카카오톡 · 문자로 보냅니다",
+                    onClick = { vm.makeStatement() }
                 )
                 if (inv.paid) {
                     Text(

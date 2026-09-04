@@ -1,0 +1,195 @@
+package com.ilgam.jangbu.ui.screen
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.ilgam.jangbu.data.JangbuRepository
+import com.ilgam.jangbu.data.dao.MonthTotals
+import com.ilgam.jangbu.data.dao.SummaryLineRow
+import com.ilgam.jangbu.ui.component.*
+import com.ilgam.jangbu.ui.jangbuViewModel
+import com.ilgam.jangbu.ui.rememberRepository
+import com.ilgam.jangbu.ui.theme.*
+import com.ilgam.jangbu.util.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
+import java.time.YearMonth
+
+/**
+ * 월별 요약 — 그 달에 얼마나 일하고 얼마가 남았는지.
+ * 마감 여부와 상관없이 '일한 날짜' 를 기준으로 셉니다.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class SummaryViewModel(private val repo: JangbuRepository) : ViewModel() {
+
+    private val _month = MutableStateFlow(YearMonth.now())
+    val month: StateFlow<YearMonth> = _month
+
+    private val range: Flow<Pair<Int, Int>> = _month.map { m ->
+        m.atDay(1).toDbInt() to m.atEndOfMonth().toDbInt()
+    }
+
+    val totals: StateFlow<MonthTotals> = range
+        .flatMapLatest { (f, t) -> repo.summary.observeTotals(f, t) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MonthTotals(0, 0, 0))
+
+    val byClient: StateFlow<List<SummaryLineRow>> = range
+        .flatMapLatest { (f, t) -> repo.summary.observeByClient(f, t) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val byEmployee: StateFlow<List<SummaryLineRow>> = range
+        .flatMapLatest { (f, t) -> repo.summary.observeByEmployee(f, t) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val byItem: StateFlow<List<SummaryLineRow>> = range
+        .flatMapLatest { (f, t) -> repo.summary.observeByItem(f, t) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun prevMonth() { _month.value = _month.value.minusMonths(1) }
+
+    /** 아직 오지 않은 달은 볼 것이 없으므로 이번 달까지만 넘어갑니다. */
+    fun nextMonth() {
+        val next = _month.value.plusMonths(1)
+        if (!next.isAfter(YearMonth.now())) _month.value = next
+    }
+
+    fun thisMonth() { _month.value = YearMonth.now() }
+}
+
+@Composable
+fun SummaryScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val repo = rememberRepository()
+    val vm = jangbuViewModel { SummaryViewModel(repo) }
+
+    val month by vm.month.collectAsState()
+    val totals by vm.totals.collectAsState()
+    val byClient by vm.byClient.collectAsState()
+    val byEmployee by vm.byEmployee.collectAsState()
+    val byItem by vm.byItem.collectAsState()
+
+    val label = "${month.year}년 ${month.monthValue}월"
+    val profit = totals.revenue - totals.wage
+    val isThisMonth = month == YearMonth.now()
+
+    JangbuScreen(
+        title = "월별 요약",
+        subtitle = label,
+        onBack = onBack,
+        bottomBar = {
+            BigButton(
+                text = "요약 보내기",
+                sub = "카카오톡 · 문자로 보냅니다",
+                onClick = {
+                    shareText(
+                        context,
+                        "$label 요약",
+                        monthSummaryText(label, totals, byClient, byEmployee)
+                    )
+                },
+                enabled = totals.qty > 0
+            )
+        }
+    ) {
+        // 달 고르기
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.Gap)) {
+            BigButton(
+                text = "◀ 지난 달",
+                onClick = { vm.prevMonth() },
+                modifier = Modifier.weight(1f)
+            )
+            BigButton(
+                text = "다음 달 ▶",
+                onClick = { vm.nextMonth() },
+                modifier = Modifier.weight(1f),
+                enabled = !isThisMonth
+            )
+        }
+        if (!isThisMonth) {
+            BigButton(text = "이번 달로", onClick = { vm.thisMonth() })
+        }
+
+        if (totals.qty == 0) {
+            EmptyMessage("$label 에는 기록이 없습니다.")
+            Spacer(Modifier.height(8.dp))
+            return@JangbuScreen
+        }
+
+        // 큰 숫자 넷 — 이 화면에서 가장 먼저 보여야 하는 것
+        SummaryBox("처리 수량", totals.qty.withUnit("장"), Accent, AccentSoft)
+        SummaryBox("받을 돈", totals.revenue.toMoneyWon(), Good, GoodBg)
+        SummaryBox("줄 공임", totals.wage.toMoneyWon(), Warn, WarnBg)
+        SummaryBox(
+            "남는 돈",
+            profit.toMoneyWon(),
+            if (profit >= 0) AccentDark else Alert,
+            if (profit >= 0) AccentSoft else AlertBg,
+            big = true
+        )
+
+        SummaryList("거래처별 받을 돈", byClient) { it.amount.toMoneyWon() }
+        SummaryList("직원별 공임", byEmployee) { it.amount.toMoneyWon() }
+        SummaryList("품목별 처리 수량", byItem) { it.qty.withUnit("장") }
+
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun SummaryBox(
+    label: String,
+    value: String,
+    fg: Color,
+    bg: Color,
+    big: Boolean = false
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Dimens.Radius))
+            .background(bg)
+            .border(Dimens.Border, fg, RoundedCornerShape(Dimens.Radius))
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.titleMedium, color = fg)
+        Text(
+            value,
+            style = if (big) MaterialTheme.typography.headlineLarge
+                    else MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = fg
+        )
+    }
+}
+
+@Composable
+private fun SummaryList(
+    title: String,
+    rows: List<SummaryLineRow>,
+    trailing: (SummaryLineRow) -> String
+) {
+    if (rows.isEmpty()) return
+    SectionTitle(title)
+    rows.forEach { row ->
+        ListRow(
+            title = row.name,
+            subtitle = row.qty.withUnit("장"),
+            trailing = trailing(row)
+        )
+    }
+}

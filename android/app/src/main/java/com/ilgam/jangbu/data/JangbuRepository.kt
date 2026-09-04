@@ -26,6 +26,7 @@ class JangbuRepository(
     val logs = db.workLogDao()
     val payrolls = db.payrollDao()
     val invoices = db.invoiceDao()
+    val summary = db.summaryDao()
 
     // ------------------------------------------------------------------
     // 일감 접수 — 거래처·품목이 없으면 같이 만들어 줍니다.

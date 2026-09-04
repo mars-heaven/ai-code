@@ -1,8 +1,6 @@
 package com.ilgam.jangbu.util
 
 import android.content.Context
-import android.content.Intent
-import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -62,22 +60,3 @@ fun rememberSpeaker(): Speaker {
 interface SpeakerHolder {
     val speaker: Speaker
 }
-
-/**
- * 구글 음성 인식 창을 띄우는 요청.
- * 인터넷이 되면 자연스러운 문장까지 알아듣고, 안 되면 기기에 깔린 인식기를 씁니다.
- */
-fun speechIntent(prompt: String): Intent =
-    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-        putExtra(
-            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-        )
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
-        putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
-        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-    }
-
-/** 음성 인식 결과에서 후보 문장들을 꺼냅니다(첫 번째가 가장 그럴듯한 것). */
-fun speechResults(data: Intent?): List<String> =
-    data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS).orEmpty()

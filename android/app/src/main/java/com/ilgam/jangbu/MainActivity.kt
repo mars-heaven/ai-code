@@ -32,6 +32,7 @@ private object Routes {
     const val PROGRESS = "progress"
     const val PAYROLL = "payroll"
     const val BACKUP = "backup"
+    const val SUMMARY = "summary"
     const val INVOICE = "invoice"
     const val INVOICE_DETAIL = "invoice/{invoiceId}"
     const val RATES = "rates/{employeeId}/{employeeName}"
@@ -82,12 +83,17 @@ private fun JangbuApp() {
                 onEmployees = { nav.navigate(Routes.EMPLOYEES) },
                 onPayroll = { nav.navigate(Routes.PAYROLL) },
                 onInvoice = { nav.navigate(Routes.INVOICE) },
-                onBackup = { nav.navigate(Routes.BACKUP) }
+                onBackup = { nav.navigate(Routes.BACKUP) },
+                onSummary = { nav.navigate(Routes.SUMMARY) }
             )
         }
 
         composable(Routes.BACKUP) {
             BackupScreen(onBack = { nav.popBackStack() })
+        }
+
+        composable(Routes.SUMMARY) {
+            SummaryScreen(onBack = { nav.popBackStack() })
         }
 
         composable(Routes.PAYROLL) {

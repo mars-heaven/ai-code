@@ -72,7 +72,8 @@ fun HomeScreen(
     onEmployees: () -> Unit,
     onPayroll: () -> Unit,
     onInvoice: () -> Unit,
-    onBackup: () -> Unit
+    onBackup: () -> Unit,
+    onSummary: () -> Unit
 ) {
     val repo = rememberRepository()
     val vm = jangbuViewModel { HomeViewModel(repo) }
@@ -122,6 +123,11 @@ fun HomeScreen(
             BigButton("일감 접수", onWorkOrder, Modifier.weight(1f))
             BigButton("진행 현황", onProgress, Modifier.weight(1f))
         }
+        BigButton(
+            text = "이번 달 얼마나 했나",
+            sub = "처리 수량 · 받을 돈 · 줄 공임 · 남는 돈",
+            onClick = onSummary
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             BigButton(
                 text = "급여 정산",

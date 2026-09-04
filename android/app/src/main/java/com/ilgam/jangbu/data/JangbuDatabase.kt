@@ -32,6 +32,7 @@ abstract class JangbuDatabase : RoomDatabase() {
     abstract fun workLogDao(): WorkLogDao
     abstract fun payrollDao(): PayrollDao
     abstract fun invoiceDao(): InvoiceDao
+    abstract fun summaryDao(): SummaryDao
 
     companion object {
         private const val NAME = "jangbu.db"

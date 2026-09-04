@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ilgam.jangbu.ui.component.*
@@ -31,6 +32,16 @@ fun PayrollScreen(onBack: () -> Unit) {
     val unpaid by vm.unpaid.collectAsState()
     val history by vm.history.collectAsState()
     val message by vm.message.collectAsState()
+    val statement by vm.statement.collectAsState()
+
+    // 정산서가 만들어지면 카카오톡·문자 보내기 창을 엽니다.
+    val context = LocalContext.current
+    LaunchedEffect(statement) {
+        statement?.let {
+            shareText(context, it.subject, it.body)
+            vm.clearStatement()
+        }
+    }
 
     val total = unpaid.sumOf { it.totalWage }
     var confirmAll by remember { mutableStateOf(false) }
@@ -180,6 +191,11 @@ fun PayrollScreen(onBack: () -> Unit) {
                             )
                         }
                     }
+                    BigButton(
+                        text = "정산서 보내기",
+                        sub = "카카오톡 · 문자로 보냅니다",
+                        onClick = { vm.makeStatement(row) }
+                    )
                 }
             }
         }

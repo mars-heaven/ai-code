@@ -73,8 +73,30 @@ class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
         }
     }
 
+    /**
+     * 정산서를 글로 만들어 화면에 넘깁니다.
+     * 화면이 이 값을 받아 카카오톡·문자 보내기 창을 엽니다.
+     */
+    private val _statement = MutableStateFlow<Statement?>(null)
+    val statement: StateFlow<Statement?> = _statement
+
+    fun makeStatement(row: PayrollRow) {
+        viewModelScope.launch {
+            val details = repo.payrolls.details(row.id)
+            _statement.value = Statement(
+                subject = "${row.employeeName} 급여 정산서",
+                body = payrollStatementText(row, details)
+            )
+        }
+    }
+
+    fun clearStatement() { _statement.value = null }
+
     fun clearMessage() { _message.value = null }
 }
+
+/** 카카오톡·문자로 보낼 글 한 벌 */
+data class Statement(val subject: String, val body: String)
 
 /** 거래처 정산 — 아직 청구하지 않은 금액을 모아 계산서를 냅니다. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -183,6 +205,23 @@ class InvoiceDetailViewModel(
             _message.value = "입금 확인했습니다"
         }
     }
+
+    /** 계산서를 글로 만들어 거래처에 보낼 수 있게 합니다. */
+    private val _statement = MutableStateFlow<Statement?>(null)
+    val statement: StateFlow<Statement?> = _statement
+
+    fun makeStatement() {
+        val row = invoice.value ?: return
+        viewModelScope.launch {
+            val details = repo.invoices.details(invoiceId)
+            _statement.value = Statement(
+                subject = "${row.clientName} 거래 명세서",
+                body = invoiceStatementText(row, details)
+            )
+        }
+    }
+
+    fun clearStatement() { _statement.value = null }
 
     /** 잘못 낸 계산서 되돌리기 — 묶음이 풀려 다시 '청구 안 함' 으로 돌아갑니다. */
     fun cancel() {
