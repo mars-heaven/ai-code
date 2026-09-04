@@ -32,11 +32,19 @@ fun JangbuScreen(
     bottomBar: @Composable (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(Modifier.fillMaxSize().background(Paper)) {
+    // 키보드가 올라오면 화면 전체를 위로 밀어 입력칸이 가리지 않게 합니다.
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Paper)
+            .imePadding()
+    ) {
+        // 제목 막대 — 파란 배경은 상태바까지 칠하고, 글자만 상태바 아래로 내립니다.
         Row(
             Modifier
                 .fillMaxWidth()
                 .background(Accent)
+                .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(horizontal = 8.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -73,6 +81,11 @@ fun JangbuScreen(
             Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
+                // 아래 버튼이 없는 화면은 내용이 네비게이션 바에 가리지 않도록 여백을 줍니다.
+                .then(
+                    if (bottomBar == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                    else Modifier
+                )
                 .padding(Dimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.Gap),
             content = content
@@ -80,7 +93,12 @@ fun JangbuScreen(
 
         if (bottomBar != null) {
             Surface(color = Paper, shadowElevation = 8.dp) {
-                Box(Modifier.padding(Dimens.ScreenPadding)) { bottomBar() }
+                Box(
+                    Modifier
+                        // 아래 버튼이 네비게이션 바에 가리지 않게 합니다.
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(Dimens.ScreenPadding)
+                ) { bottomBar() }
             }
         }
     }
