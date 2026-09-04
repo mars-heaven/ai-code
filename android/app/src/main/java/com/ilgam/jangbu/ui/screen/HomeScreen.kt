@@ -3,6 +3,7 @@ package com.ilgam.jangbu.ui.screen
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,9 @@ import com.ilgam.jangbu.data.JangbuRepository
 import com.ilgam.jangbu.ui.component.*
 import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.rememberRepository
+import com.ilgam.jangbu.util.Prefs
+import com.ilgam.jangbu.util.backupIsStale
+import com.ilgam.jangbu.util.toBackupDisplay
 import com.ilgam.jangbu.util.toDbInt
 import com.ilgam.jangbu.util.toMoneyWon
 import com.ilgam.jangbu.util.toShortDisplay
@@ -67,10 +71,15 @@ fun HomeScreen(
     onItems: () -> Unit,
     onEmployees: () -> Unit,
     onPayroll: () -> Unit,
-    onInvoice: () -> Unit
+    onInvoice: () -> Unit,
+    onBackup: () -> Unit
 ) {
     val repo = rememberRepository()
     val vm = jangbuViewModel { HomeViewModel(repo) }
+
+    // 화면에 들어올 때마다 마지막 백업 시각을 다시 읽습니다.
+    val context = LocalContext.current
+    val lastBackupAt = remember { Prefs(context).lastBackupAt }
 
     val todayQty by vm.todayQty.collectAsState()
     val remainQty by vm.remainQty.collectAsState()
@@ -142,6 +151,17 @@ fun HomeScreen(
             text = "직원",
             sub = if (employeeCount == 0) "먼저 등록해 주세요" else "${employeeCount}명",
             onClick = onEmployees
+        )
+
+        SectionTitle("자료 지키기")
+
+        BigButton(
+            text = "백업과 복원",
+            sub = lastBackupAt.toBackupDisplay(),
+            onClick = onBackup,
+            // 오래 미뤄 두면 눈에 띄게 해서 잊지 않도록 합니다.
+            kind = if (lastBackupAt.backupIsStale()) BigButtonKind.Danger
+                   else BigButtonKind.Normal
         )
 
         Spacer(Modifier.height(8.dp))

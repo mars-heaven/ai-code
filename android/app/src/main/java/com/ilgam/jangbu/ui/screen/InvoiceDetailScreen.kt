@@ -60,10 +60,11 @@ fun InvoiceDetailScreen(invoiceId: Long, onBack: () -> Unit) {
         pendingFile = null
         if (file == null) return@rememberLauncherForActivityResult
         if (saved) {
-            vm.addPhoto(file.absolutePath)
+            // 장부에는 파일 이름만 담습니다(휴대폰을 바꿔 복원해도 찾을 수 있도록).
+            vm.addPhoto(file.name)
         } else {
             // 찍다가 취소하면 빈 파일이 남으므로 지웁니다.
-            deletePhotoFile(file.absolutePath)
+            deletePhotoFile(file)
         }
     }
 
@@ -74,7 +75,7 @@ fun InvoiceDetailScreen(invoiceId: Long, onBack: () -> Unit) {
         val ok = runCatching { takePicture.launch(uri) }.isSuccess
         if (!ok) {
             pendingFile = null
-            deletePhotoFile(file.absolutePath)
+            deletePhotoFile(file)
             cameraFailed = true
         }
     }
@@ -178,7 +179,7 @@ fun InvoiceDetailScreen(invoiceId: Long, onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     AsyncImage(
-                        model = File(photo.filePath),
+                        model = photoFile(context, photo.filePath),
                         contentDescription = "계산서 사진",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
