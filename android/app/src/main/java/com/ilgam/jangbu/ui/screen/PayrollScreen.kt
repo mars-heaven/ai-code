@@ -33,6 +33,7 @@ fun PayrollScreen(onBack: () -> Unit) {
     val history by vm.history.collectAsState()
     val message by vm.message.collectAsState()
     val statement by vm.statement.collectAsState()
+    val allUnpaidTotal by vm.allUnpaidTotal.collectAsState()
 
     // 정산서가 만들어지면 카카오톡·문자 보내기 창을 엽니다.
     val context = LocalContext.current
@@ -65,8 +66,17 @@ fun PayrollScreen(onBack: () -> Unit) {
     ) {
         MessageBanner(message, vm::clearMessage)
 
-        // 기간 고르기 — 달로 넘기거나 날짜를 직접 고릅니다.
+        // 기간 고르기 — 주·달로 넘기거나 날짜를 직접 고릅니다.
         PeriodPicker(period = period, onChange = vm::setPeriod)
+
+        // 고른 기간 밖에 남은 것이 있으면 알려 줍니다(주 단위로만 보다 빠뜨리는 것을 막습니다).
+        val leftover = allUnpaidTotal - total
+        if (period.kind != PeriodKind.ALL && leftover > 0L) {
+            LeftoverNotice(
+                text = "이 기간 밖에 아직 지급 안 한 공임이 ${leftover.toMoneyWon()} 더 있습니다.",
+                onShowAll = { vm.setPeriod(allPeriod()) }
+            )
+        }
 
         // 아직 지급 안 한 공임
         SectionTitle("아직 지급 안 한 공임")

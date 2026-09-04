@@ -38,6 +38,7 @@ fun InvoiceScreen(
     val unpaidInvoices by vm.unpaidInvoices.collectAsState()
     val history by vm.history.collectAsState()
     val message by vm.message.collectAsState()
+    val allUnbilledTotal by vm.allUnbilledTotal.collectAsState()
 
     val unbilledTotal = unbilled.sumOf { it.totalAmount }
     val receivable = unpaidInvoices.sumOf { it.totalAmount }
@@ -85,6 +86,15 @@ fun InvoiceScreen(
         }
 
         PeriodPicker(period = period, onChange = vm::setPeriod)
+
+        // 고른 기간 밖에 남은 것이 있으면 알려 줍니다.
+        val leftover = allUnbilledTotal - unbilledTotal
+        if (period.kind != PeriodKind.ALL && leftover > 0L) {
+            LeftoverNotice(
+                text = "이 기간 밖에 아직 청구 안 한 금액이 ${leftover.toMoneyWon()} 더 있습니다.",
+                onShowAll = { vm.setPeriod(allPeriod()) }
+            )
+        }
 
         // 아직 계산서를 내지 않은 거래처
         SectionTitle("아직 계산서 안 낸 거래처")

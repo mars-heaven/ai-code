@@ -12,17 +12,30 @@ import kotlinx.coroutines.launch
 
 private const val STOP_MS = 5_000L
 
+// '기간 상관없이 전부' 를 나타내는 날짜 범위
+private const val ALL_FROM = 20000101
+private const val ALL_TO = 99991231
+
 /** 급여 정산 — 아직 지급하지 않은 공임을 모아 마감합니다. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
 
-    private val _period = MutableStateFlow(monthPeriod())
+    private val _period = MutableStateFlow(weekPeriod())
     val period: StateFlow<Period> = _period
 
     /** 기간 안에서 아직 정산 안 된 직원별 공임 */
     val unpaid: StateFlow<List<UnpaidWageRow>> = _period
         .flatMapLatest { p -> repo.payrolls.observeUnpaidWages(p.from.toDbInt(), p.to.toDbInt()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), emptyList())
+
+    /**
+     * 기간과 상관없이 아직 마감 안 된 공임 전부.
+     * 주 단위로만 보면 지난 주에 빠뜨린 것이 묻히므로, 화면에서 이 값과 견주어 알려 줍니다.
+     */
+    val allUnpaidTotal: StateFlow<Long> =
+        repo.payrolls.observeUnpaidWages(ALL_FROM, ALL_TO)
+            .map { list -> list.sumOf { it.totalWage } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), 0L)
 
     /** 지금까지 마감한 급여 이력 */
     val history: StateFlow<List<PayrollRow>> = repo.payrolls.observeHistory()
@@ -110,7 +123,7 @@ data class Statement(
 @OptIn(ExperimentalCoroutinesApi::class)
 class InvoiceViewModel(private val repo: JangbuRepository) : ViewModel() {
 
-    private val _period = MutableStateFlow(monthPeriod())
+    private val _period = MutableStateFlow(weekPeriod())
     val period: StateFlow<Period> = _period
 
     val unbilled: StateFlow<List<UnbilledRow>> = _period
@@ -128,6 +141,12 @@ class InvoiceViewModel(private val repo: JangbuRepository) : ViewModel() {
                 else repo.invoices.observeUnbilledDetail(id, p.from.toDbInt(), p.to.toDbInt())
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), emptyList())
+
+    /** 기간과 상관없이 아직 청구 안 된 금액 전부 */
+    val allUnbilledTotal: StateFlow<Long> =
+        repo.invoices.observeUnbilled(ALL_FROM, ALL_TO)
+            .map { list -> list.sumOf { it.totalAmount } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), 0L)
 
     /** 아직 입금 안 된 계산서(미수금) */
     val unpaidInvoices: StateFlow<List<InvoiceRow>> = repo.invoices.observeUnpaid()

@@ -95,8 +95,8 @@ fun SummaryScreen(onBack: () -> Unit) {
             )
         }
     ) {
-        // 기간 고르기 — 여기서는 '전체' 가 뜻이 없으므로 뺍니다.
-        PeriodPicker(period = period, onChange = vm::setPeriod, showAll = false)
+        // 기간 고르기 — 주·달로 넘기거나 날짜를 직접 고릅니다.
+        PeriodPicker(period = period, onChange = vm::setPeriod)
 
         if (totals.qty == 0) {
             EmptyMessage("이 기간에는 기록이 없습니다.")
