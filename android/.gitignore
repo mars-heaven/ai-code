@@ -1,0 +1,15 @@
+*.iml
+.gradle/
+/local.properties
+local.properties
+/.idea
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+
+# wrapper 바이너리는 저장소에 두지 않습니다 (CI 는 gradle 을 직접 설치해 씁니다).
+gradle/wrapper/gradle-wrapper.jar
+gradlew
+gradlew.bat

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 장부 표지 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33,28 L75,28 A4,4 0 0 1 79,32 L79,76 A4,4 0 0 1 75,80 L33,80 A4,4 0 0 1 29,76 L29,32 A4,4 0 0 1 33,28 Z" />
+
+    <!-- 제본선 -->
+    <path
+        android:fillColor="#C8D6E8"
+        android:pathData="M29,32 A4,4 0 0 1 33,28 L38,28 L38,80 L33,80 A4,4 0 0 1 29,76 Z" />
+
+    <!-- 기록된 줄 -->
+    <path
+        android:fillColor="#1F5FA8"
+        android:pathData="M45,41 L72,41 L72,45 L45,45 Z" />
+    <path
+        android:fillColor="#1F5FA8"
+        android:pathData="M45,52 L72,52 L72,56 L45,56 Z" />
+    <path
+        android:fillColor="#1F5FA8"
+        android:pathData="M45,63 L62,63 L62,67 L45,67 Z" />
+</vector>

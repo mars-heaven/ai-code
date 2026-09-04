@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose 가 실제 화면을 그리므로 XML 테마는 첫 프레임 배경과 시스템 바만 담당합니다. -->
+    <style name="Theme.IlgamJangbu" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">#1F5FA8</item>
+        <item name="android:navigationBarColor">@color/window_background</item>
+    </style>
+</resources>
