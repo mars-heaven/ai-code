@@ -11,6 +11,7 @@ import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.rememberRepository
 import com.ilgam.jangbu.ui.theme.Dimens
 import com.ilgam.jangbu.ui.theme.InkSoft
+import com.ilgam.jangbu.util.rememberSpeaker
 import com.ilgam.jangbu.util.toMoneyWon
 import java.time.LocalDate
 
@@ -34,6 +35,10 @@ fun WorkOrderScreen(onBack: () -> Unit) {
     var wage by remember { mutableStateOf("") }
     var unitLabel by remember { mutableStateOf("장") }
     var dueInDays by remember { mutableStateOf<Int?>(null) }
+
+    // 접수 결과를 소리로도 알려 줍니다(설정에서 끌 수 있습니다).
+    val speaker = rememberSpeaker()
+    LaunchedEffect(message) { message?.let { speaker.say(it) } }
 
     // 저장이 끝나면 이전 화면으로 돌아갑니다.
     LaunchedEffect(saved) {

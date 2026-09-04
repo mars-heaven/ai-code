@@ -79,7 +79,9 @@ fun HomeScreen(
 
     // 화면에 들어올 때마다 마지막 백업 시각을 다시 읽습니다.
     val context = LocalContext.current
-    val lastBackupAt = remember { Prefs(context).lastBackupAt }
+    val prefs = remember { Prefs(context) }
+    val lastBackupAt = remember { prefs.lastBackupAt }
+    var speakEnabled by remember { mutableStateOf(prefs.speakEnabled) }
 
     val todayQty by vm.todayQty.collectAsState()
     val remainQty by vm.remainQty.collectAsState()
@@ -153,7 +155,7 @@ fun HomeScreen(
             onClick = onEmployees
         )
 
-        SectionTitle("자료 지키기")
+        SectionTitle("설정")
 
         BigButton(
             text = "백업과 복원",
@@ -162,6 +164,15 @@ fun HomeScreen(
             // 오래 미뤄 두면 눈에 띄게 해서 잊지 않도록 합니다.
             kind = if (lastBackupAt.backupIsStale()) BigButtonKind.Danger
                    else BigButtonKind.Normal
+        )
+        BigButton(
+            text = if (speakEnabled) "소리 안내 켜짐" else "소리 안내 꺼짐",
+            sub = if (speakEnabled) "저장할 때 말로도 알려 줍니다" else "눌러서 켤 수 있습니다",
+            onClick = {
+                speakEnabled = !speakEnabled
+                prefs.speakEnabled = speakEnabled
+            },
+            selected = speakEnabled
         )
 
         Spacer(Modifier.height(8.dp))

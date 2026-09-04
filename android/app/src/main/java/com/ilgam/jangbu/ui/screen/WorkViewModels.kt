@@ -8,6 +8,10 @@ import com.ilgam.jangbu.data.dao.WorkLogRow
 import com.ilgam.jangbu.data.dao.WorkOrderRow
 import com.ilgam.jangbu.data.entity.Client
 import com.ilgam.jangbu.data.entity.Employee
+import com.ilgam.jangbu.util.VoiceCandidate
+import com.ilgam.jangbu.util.matchByName
+import com.ilgam.jangbu.util.parseQtyFromSpeech
+import com.ilgam.jangbu.util.removeMatched
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -113,6 +117,48 @@ class WorkLogViewModel(private val repo: JangbuRepository) : ViewModel() {
     fun setQty(value: String) { _qty.value = value.filter { it.isDigit() } }
 
     fun setWorkDate(date: LocalDate) { _workDate.value = date }
+
+    /** 말로 넣은 내용을 화면 상태로 옮깁니다. 저장은 사람이 눈으로 보고 누르게 둡니다. */
+    private val _heard = MutableStateFlow<String?>(null)
+    val heard: StateFlow<String?> = _heard
+
+    fun applyVoice(spoken: String) {
+        _heard.value = spoken
+
+        val employeeMatch = matchByName(
+            spoken,
+            employees.value.map { VoiceCandidate(it.id, listOf(it.name)) }
+        )
+        // 일감은 거래처와 품목 어느 쪽으로 불러도 찾히게 합니다.
+        val orderMatch = matchByName(
+            spoken,
+            orders.value.map {
+                VoiceCandidate(it.id, listOf(it.itemName, it.clientName, "${it.clientName} ${it.itemName}"))
+            }
+        )
+
+        employeeMatch?.let { (id, _) -> selectEmployee(id) }
+        orderMatch?.let { (id, _) -> selectOrder(id) }
+
+        // 이름 글자를 숫자로 잘못 읽지 않도록, 알아들은 이름을 걷어낸 뒤 수량을 읽습니다.
+        val rest = removeMatched(spoken, employeeMatch?.second, orderMatch?.second)
+        val amount = parseQtyFromSpeech(rest)
+        if (amount != null && amount > 0) _qty.value = amount.toString()
+
+        val empName = employeeMatch?.let { m -> employees.value.firstOrNull { it.id == m.first }?.name }
+        val order = orderMatch?.let { m -> orders.value.firstOrNull { it.id == m.first } }
+
+        _message.value = when {
+            empName == null && order == null ->
+                "‘$spoken’ 은 알아듣지 못했습니다. 직접 골라 주세요"
+            empName == null -> "직원을 알아듣지 못했습니다. 직원만 골라 주세요"
+            order == null -> "일감을 알아듣지 못했습니다. 일감만 골라 주세요"
+            amount == null || amount <= 0 -> "$empName · ${order.itemName} — 수량을 알아듣지 못했습니다"
+            else -> "$empName · ${order.itemName} ${amount}${order.unitLabel} — 맞으면 저장을 누르세요"
+        }
+    }
+
+    fun clearHeard() { _heard.value = null }
 
     private fun refreshWage() {
         val emp = _employeeId.value

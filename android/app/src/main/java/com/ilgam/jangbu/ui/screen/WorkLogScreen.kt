@@ -1,5 +1,8 @@
 package com.ilgam.jangbu.ui.screen
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -11,6 +14,9 @@ import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.rememberRepository
 import com.ilgam.jangbu.ui.theme.Dimens
 import com.ilgam.jangbu.ui.theme.InkSoft
+import com.ilgam.jangbu.util.rememberSpeaker
+import com.ilgam.jangbu.util.speechIntent
+import com.ilgam.jangbu.util.speechResults
 import com.ilgam.jangbu.util.toMoneyWon
 import com.ilgam.jangbu.util.withUnit
 import java.time.LocalDate
@@ -32,10 +38,23 @@ fun WorkLogScreen(onBack: () -> Unit) {
     val workDate by vm.workDate.collectAsState()
     val wageUnitPrice by vm.wageUnitPrice.collectAsState()
     val message by vm.message.collectAsState()
+    val heard by vm.heard.collectAsState()
 
     val selectedOrder = orders.firstOrNull { it.id == orderId }
     val amount = qty.toIntOrNull() ?: 0
     val total = amount * wageUnitPrice
+
+    // 안내 문구는 소리로도 읽어 줍니다(설정에서 끌 수 있습니다).
+    val speaker = rememberSpeaker()
+    LaunchedEffect(message) { message?.let { speaker.say(it) } }
+
+    var voiceUnavailable by remember { mutableStateOf(false) }
+    val listen = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        speechResults(result.data).firstOrNull()?.let { vm.applyVoice(it) }
+    }
 
     JangbuScreen(
         title = "작업 등록",
@@ -64,6 +83,26 @@ fun WorkLogScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             return@JangbuScreen
+        }
+
+        // 말로 한 번에 넣기 — 고르는 수고를 덜어 줍니다.
+        BigButton(
+            text = "🎤 말로 넣기",
+            sub = "예) 김영순 티셔츠 삼백 장",
+            onClick = {
+                vm.clearHeard()
+                val ok = runCatching {
+                    listen.launch(speechIntent("누가 · 무엇을 · 몇 장 했는지 말씀하세요"))
+                }.isSuccess
+                if (!ok) voiceUnavailable = true
+            }
+        )
+        if (heard != null) {
+            Text(
+                "들은 말: $heard",
+                style = MaterialTheme.typography.bodyMedium,
+                color = InkSoft
+            )
         }
 
         // 1. 직원
@@ -137,5 +176,18 @@ fun WorkLogScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(8.dp))
+    }
+
+    if (voiceUnavailable) {
+        ConfirmDialog(
+            title = "음성 인식을 쓸 수 없습니다",
+            message = "이 휴대폰에 음성 인식 앱이 없습니다.\n" +
+                "‘구글’ 앱을 설치하면 말로 넣을 수 있습니다.\n" +
+                "지금은 아래에서 직접 골라 주세요.",
+            confirmText = "알겠습니다",
+            dismissText = "닫기",
+            onConfirm = { voiceUnavailable = false },
+            onDismiss = { voiceUnavailable = false }
+        )
     }
 }
