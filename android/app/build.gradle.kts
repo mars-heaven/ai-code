@@ -5,6 +5,16 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+/**
+ * 서버 저장(파이어베이스)은 google-services.json 이 있을 때만 켜집니다.
+ * 파일이 없어도 앱은 지금처럼 폰 안에만 저장하며 그대로 돌아갑니다.
+ */
+val firebaseConfig = file("google-services.json")
+val serverEnabled = firebaseConfig.exists()
+if (serverEnabled) {
+    apply(plugin = libs.plugins.google.services.get().pluginId)
+}
+
 android {
     namespace = "com.ilgam.jangbu"
     compileSdk = 35
@@ -16,6 +26,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         vectorDrawables { useSupportLibrary = true }
+
+        // 앱이 서버 기능을 켤 수 있는 상태인지 코드에서 볼 수 있게 합니다.
+        buildConfigField("boolean", "SERVER_ENABLED", serverEnabled.toString())
     }
 
     buildTypes {
@@ -43,6 +56,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -76,6 +90,15 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.coil.compose)
+
+    // 서버 저장 — google-services.json 이 없으면 코드가 실행되지 않을 뿐, 빌드는 됩니다.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services)
+    implementation(libs.google.identity)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

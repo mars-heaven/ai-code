@@ -73,7 +73,8 @@ fun HomeScreen(
     onPayroll: () -> Unit,
     onInvoice: () -> Unit,
     onBackup: () -> Unit,
-    onSummary: () -> Unit
+    onSummary: () -> Unit,
+    onServer: () -> Unit
 ) {
     val repo = rememberRepository()
     val vm = jangbuViewModel { HomeViewModel(repo) }
@@ -83,6 +84,7 @@ fun HomeScreen(
     val prefs = remember { Prefs(context) }
     val lastBackupAt = remember { prefs.lastBackupAt }
     var speakEnabled by remember { mutableStateOf(prefs.speakEnabled) }
+    val shopName = remember { prefs.shopName }
 
     val todayQty by vm.todayQty.collectAsState()
     val remainQty by vm.remainQty.collectAsState()
@@ -170,6 +172,11 @@ fun HomeScreen(
             // 오래 미뤄 두면 눈에 띄게 해서 잊지 않도록 합니다.
             kind = if (lastBackupAt.backupIsStale()) BigButtonKind.Danger
                    else BigButtonKind.Normal
+        )
+        BigButton(
+            text = "함께 보기",
+            sub = shopName.ifBlank { "가족도 볼 수 있게 합니다" },
+            onClick = onServer
         )
         BigButton(
             text = if (speakEnabled) "소리 안내 켜짐" else "소리 안내 꺼짐",
