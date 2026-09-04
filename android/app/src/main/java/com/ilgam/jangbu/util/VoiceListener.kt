@@ -140,7 +140,7 @@ class VoiceListener(context: Context) : RecognitionListener {
             SpeechRecognizer.ERROR_NETWORK,
             SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "인터넷이 안 되어 알아듣지 못했습니다"
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "마이크 사용을 허용해 주세요"
-            SpeechRecognizer.ERROR_BUSY -> "잠시 뒤에 다시 눌러 주세요"
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "잠시 뒤에 다시 눌러 주세요"
             else -> "음성 인식에 실패했습니다"
         }
     }
