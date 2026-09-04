@@ -31,6 +31,8 @@ data class PayrollRow(
     val id: Long,
     val employeeId: Long,
     val employeeName: String,
+    /** 정산서를 문자로 보낼 때 씁니다. 없으면 빈 글자 */
+    val employeePhone: String,
     val periodStart: Int,
     val periodEnd: Int,
     val totalAmount: Long,
@@ -73,7 +75,8 @@ interface PayrollDao {
 
     @Query(
         """
-        SELECT p.id, p.employeeId, e.name AS employeeName, p.periodStart, p.periodEnd,
+        SELECT p.id, p.employeeId, e.name AS employeeName, e.phone AS employeePhone,
+               p.periodStart, p.periodEnd,
                p.totalAmount, p.closedDate, p.paid, p.paidDate
         FROM payrolls p JOIN employees e ON e.id = p.employeeId
         ORDER BY p.closedDate DESC, p.id DESC
@@ -135,6 +138,8 @@ data class InvoiceRow(
     val id: Long,
     val clientId: Long,
     val clientName: String,
+    /** 명세서를 문자로 보낼 때 씁니다. 없으면 빈 글자 */
+    val clientPhone: String,
     val periodStart: Int,
     val periodEnd: Int,
     val totalAmount: Long,
@@ -193,7 +198,8 @@ interface InvoiceDao {
 
     @Query(
         """
-        SELECT inv.id, inv.clientId, c.name AS clientName, inv.periodStart, inv.periodEnd,
+        SELECT inv.id, inv.clientId, c.name AS clientName, c.phone AS clientPhone,
+               inv.periodStart, inv.periodEnd,
                inv.totalAmount, inv.issuedDate, inv.paid, inv.paidDate
         FROM invoices inv JOIN clients c ON c.id = inv.clientId
         ORDER BY inv.issuedDate DESC, inv.id DESC
@@ -204,7 +210,8 @@ interface InvoiceDao {
     /** 아직 입금 안 된 계산서(미수금) */
     @Query(
         """
-        SELECT inv.id, inv.clientId, c.name AS clientName, inv.periodStart, inv.periodEnd,
+        SELECT inv.id, inv.clientId, c.name AS clientName, c.phone AS clientPhone,
+               inv.periodStart, inv.periodEnd,
                inv.totalAmount, inv.issuedDate, inv.paid, inv.paidDate
         FROM invoices inv JOIN clients c ON c.id = inv.clientId
         WHERE inv.paid = 0

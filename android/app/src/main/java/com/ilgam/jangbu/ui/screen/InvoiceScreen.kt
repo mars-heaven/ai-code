@@ -84,7 +84,7 @@ fun InvoiceScreen(
             )
         }
 
-        PeriodPicker(current = period.kind, onPick = vm::setPeriod)
+        PeriodPicker(period = period, onChange = vm::setPeriod)
 
         // 아직 계산서를 내지 않은 거래처
         SectionTitle("아직 계산서 안 낸 거래처")

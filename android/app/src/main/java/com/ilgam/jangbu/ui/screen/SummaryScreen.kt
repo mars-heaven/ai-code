@@ -26,20 +26,20 @@ import com.ilgam.jangbu.ui.theme.*
 import com.ilgam.jangbu.util.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
-import java.time.YearMonth
 
 /**
- * 월별 요약 — 그 달에 얼마나 일하고 얼마가 남았는지.
+ * 기간 요약 — 그동안 얼마나 일하고 얼마가 남았는지.
+ * 달이 기본이지만 15일 마감처럼 달과 안 맞는 경우를 위해 날짜도 고를 수 있습니다.
  * 마감 여부와 상관없이 '일한 날짜' 를 기준으로 셉니다.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SummaryViewModel(private val repo: JangbuRepository) : ViewModel() {
 
-    private val _month = MutableStateFlow(YearMonth.now())
-    val month: StateFlow<YearMonth> = _month
+    private val _period = MutableStateFlow(monthPeriod())
+    val period: StateFlow<Period> = _period
 
-    private val range: Flow<Pair<Int, Int>> = _month.map { m ->
-        m.atDay(1).toDbInt() to m.atEndOfMonth().toDbInt()
+    private val range: Flow<Pair<Int, Int>> = _period.map { p ->
+        p.from.toDbInt() to p.to.toDbInt()
     }
 
     val totals: StateFlow<MonthTotals> = range
@@ -58,15 +58,7 @@ class SummaryViewModel(private val repo: JangbuRepository) : ViewModel() {
         .flatMapLatest { (f, t) -> repo.summary.observeByItem(f, t) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun prevMonth() { _month.value = _month.value.minusMonths(1) }
-
-    /** 아직 오지 않은 달은 볼 것이 없으므로 이번 달까지만 넘어갑니다. */
-    fun nextMonth() {
-        val next = _month.value.plusMonths(1)
-        if (!next.isAfter(YearMonth.now())) _month.value = next
-    }
-
-    fun thisMonth() { _month.value = YearMonth.now() }
+    fun setPeriod(period: Period) { _period.value = period }
 }
 
 @Composable
@@ -75,19 +67,18 @@ fun SummaryScreen(onBack: () -> Unit) {
     val repo = rememberRepository()
     val vm = jangbuViewModel { SummaryViewModel(repo) }
 
-    val month by vm.month.collectAsState()
+    val period by vm.period.collectAsState()
     val totals by vm.totals.collectAsState()
     val byClient by vm.byClient.collectAsState()
     val byEmployee by vm.byEmployee.collectAsState()
     val byItem by vm.byItem.collectAsState()
 
-    val label = "${month.year}년 ${month.monthValue}월"
+    val label = period.displayRange()
     val profit = totals.revenue - totals.wage
-    val isThisMonth = month == YearMonth.now()
 
     JangbuScreen(
-        title = "월별 요약",
-        subtitle = label,
+        title = "기간 요약",
+        subtitle = period.rangeText(),
         onBack = onBack,
         bottomBar = {
             BigButton(
@@ -104,26 +95,11 @@ fun SummaryScreen(onBack: () -> Unit) {
             )
         }
     ) {
-        // 달 고르기
-        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.Gap)) {
-            BigButton(
-                text = "◀ 지난 달",
-                onClick = { vm.prevMonth() },
-                modifier = Modifier.weight(1f)
-            )
-            BigButton(
-                text = "다음 달 ▶",
-                onClick = { vm.nextMonth() },
-                modifier = Modifier.weight(1f),
-                enabled = !isThisMonth
-            )
-        }
-        if (!isThisMonth) {
-            BigButton(text = "이번 달로", onClick = { vm.thisMonth() })
-        }
+        // 기간 고르기 — 여기서는 '전체' 가 뜻이 없으므로 뺍니다.
+        PeriodPicker(period = period, onChange = vm::setPeriod, showAll = false)
 
         if (totals.qty == 0) {
-            EmptyMessage("$label 에는 기록이 없습니다.")
+            EmptyMessage("이 기간에는 기록이 없습니다.")
             Spacer(Modifier.height(8.dp))
             return@JangbuScreen
         }

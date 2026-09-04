@@ -49,8 +49,15 @@ fun InvoiceDetailScreen(invoiceId: Long, onBack: () -> Unit) {
 
     // 명세서가 만들어지면 카카오톡·문자 보내기 창을 엽니다.
     LaunchedEffect(statement) {
-        statement?.let {
-            shareText(context, it.subject, it.body)
+        statement?.let { st ->
+            if (st.viaSms) {
+                // 문자에는 사진이 붙지 않습니다. 번호와 글만 채워 문자 앱을 엽니다.
+                sendSms(context, st.phone, st.body)
+            } else {
+                // 보관해 둔 계산서 사진을 함께 붙여 보냅니다.
+                val uris = photos.map { fileProviderUri(context, photoFile(context, it.filePath)) }
+                shareTextAndPhotos(context, st.subject, st.body, uris, st.phone)
+            }
             vm.clearStatement()
         }
     }
@@ -152,9 +159,17 @@ fun InvoiceDetailScreen(invoiceId: Long, onBack: () -> Unit) {
                 )
                 BigButton(
                     text = "명세서 보내기",
-                    sub = "카카오톡 · 문자로 보냅니다",
+                    sub = if (photos.isEmpty()) "카카오톡 · 메일 등에서 고릅니다"
+                          else "사진 ${photos.size}장과 함께 보냅니다",
                     onClick = { vm.makeStatement() }
                 )
+                if (inv.clientPhone.isNotBlank()) {
+                    BigButton(
+                        text = "문자로 보내기",
+                        sub = "${inv.clientPhone} · 글만 갑니다",
+                        onClick = { vm.makeStatement(viaSms = true) }
+                    )
+                }
                 if (inv.paid) {
                     Text(
                         "입금 ${inv.paidDate?.toLocalDate()?.toDisplay() ?: "-"}",

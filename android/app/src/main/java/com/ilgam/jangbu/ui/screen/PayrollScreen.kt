@@ -38,7 +38,8 @@ fun PayrollScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(statement) {
         statement?.let {
-            shareText(context, it.subject, it.body)
+            if (it.viaSms) sendSms(context, it.phone, it.body)
+            else shareText(context, it.subject, it.body, it.phone)
             vm.clearStatement()
         }
     }
@@ -64,8 +65,8 @@ fun PayrollScreen(onBack: () -> Unit) {
     ) {
         MessageBanner(message, vm::clearMessage)
 
-        // 기간 고르기
-        PeriodPicker(current = period.kind, onPick = vm::setPeriod)
+        // 기간 고르기 — 달로 넘기거나 날짜를 직접 고릅니다.
+        PeriodPicker(period = period, onChange = vm::setPeriod)
 
         // 아직 지급 안 한 공임
         SectionTitle("아직 지급 안 한 공임")
@@ -193,9 +194,16 @@ fun PayrollScreen(onBack: () -> Unit) {
                     }
                     BigButton(
                         text = "정산서 보내기",
-                        sub = "카카오톡 · 문자로 보냅니다",
+                        sub = "카카오톡 · 메일 등에서 고릅니다",
                         onClick = { vm.makeStatement(row) }
                     )
+                    if (row.employeePhone.isNotBlank()) {
+                        BigButton(
+                            text = "문자로 보내기",
+                            sub = row.employeePhone,
+                            onClick = { vm.makeStatement(row, viaSms = true) }
+                        )
+                    }
                 }
             }
         }
@@ -229,28 +237,3 @@ fun PayrollScreen(onBack: () -> Unit) {
 }
 
 private data class PayrollRowTarget(val id: Long, val name: String)
-
-/** 기간 고르기 — 달력 대신 버튼 세 개로 */
-@Composable
-fun PeriodPicker(current: PeriodKind, onPick: (PeriodKind) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(Dimens.Gap)) {
-        BigButton(
-            text = "이번 달",
-            onClick = { onPick(PeriodKind.THIS_MONTH) },
-            modifier = Modifier.weight(1f),
-            selected = current == PeriodKind.THIS_MONTH
-        )
-        BigButton(
-            text = "지난 달",
-            onClick = { onPick(PeriodKind.LAST_MONTH) },
-            modifier = Modifier.weight(1f),
-            selected = current == PeriodKind.LAST_MONTH
-        )
-        BigButton(
-            text = "전체",
-            onClick = { onPick(PeriodKind.ALL) },
-            modifier = Modifier.weight(1f),
-            selected = current == PeriodKind.ALL
-        )
-    }
-}

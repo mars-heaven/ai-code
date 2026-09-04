@@ -16,7 +16,7 @@ private const val STOP_MS = 5_000L
 @OptIn(ExperimentalCoroutinesApi::class)
 class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
 
-    private val _period = MutableStateFlow(periodOf(PeriodKind.THIS_MONTH))
+    private val _period = MutableStateFlow(monthPeriod())
     val period: StateFlow<Period> = _period
 
     /** 기간 안에서 아직 정산 안 된 직원별 공임 */
@@ -31,7 +31,7 @@ class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    fun setPeriod(kind: PeriodKind) { _period.value = periodOf(kind) }
+    fun setPeriod(period: Period) { _period.value = period }
 
     /** 한 사람만 마감 */
     fun closeOne(employeeId: Long, employeeName: String) {
@@ -80,12 +80,14 @@ class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
     private val _statement = MutableStateFlow<Statement?>(null)
     val statement: StateFlow<Statement?> = _statement
 
-    fun makeStatement(row: PayrollRow) {
+    fun makeStatement(row: PayrollRow, viaSms: Boolean = false) {
         viewModelScope.launch {
             val details = repo.payrolls.details(row.id)
             _statement.value = Statement(
                 subject = "${row.employeeName} 급여 정산서",
-                body = payrollStatementText(row, details)
+                body = payrollStatementText(row, details),
+                phone = row.employeePhone,
+                viaSms = viaSms
             )
         }
     }
@@ -96,13 +98,19 @@ class PayrollViewModel(private val repo: JangbuRepository) : ViewModel() {
 }
 
 /** 카카오톡·문자로 보낼 글 한 벌 */
-data class Statement(val subject: String, val body: String)
+data class Statement(
+    val subject: String,
+    val body: String,
+    val phone: String = "",
+    /** true 면 저장된 번호로 문자 앱을 곧장 엽니다. */
+    val viaSms: Boolean = false
+)
 
 /** 거래처 정산 — 아직 청구하지 않은 금액을 모아 계산서를 냅니다. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class InvoiceViewModel(private val repo: JangbuRepository) : ViewModel() {
 
-    private val _period = MutableStateFlow(periodOf(PeriodKind.THIS_MONTH))
+    private val _period = MutableStateFlow(monthPeriod())
     val period: StateFlow<Period> = _period
 
     val unbilled: StateFlow<List<UnbilledRow>> = _period
@@ -131,7 +139,7 @@ class InvoiceViewModel(private val repo: JangbuRepository) : ViewModel() {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    fun setPeriod(kind: PeriodKind) { _period.value = periodOf(kind) }
+    fun setPeriod(period: Period) { _period.value = period }
 
     fun toggleClient(clientId: Long) {
         _openClientId.value = if (_openClientId.value == clientId) null else clientId
@@ -210,13 +218,15 @@ class InvoiceDetailViewModel(
     private val _statement = MutableStateFlow<Statement?>(null)
     val statement: StateFlow<Statement?> = _statement
 
-    fun makeStatement() {
+    fun makeStatement(viaSms: Boolean = false) {
         val row = invoice.value ?: return
         viewModelScope.launch {
             val details = repo.invoices.details(invoiceId)
             _statement.value = Statement(
                 subject = "${row.clientName} 거래 명세서",
-                body = invoiceStatementText(row, details)
+                body = invoiceStatementText(row, details),
+                phone = row.clientPhone,
+                viaSms = viaSms
             )
         }
     }
