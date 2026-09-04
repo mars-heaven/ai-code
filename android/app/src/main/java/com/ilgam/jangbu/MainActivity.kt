@@ -30,12 +30,17 @@ private object Routes {
     const val WORK_ORDER = "work_order"
     const val WORK_LOG = "work_log"
     const val PROGRESS = "progress"
+    const val PAYROLL = "payroll"
+    const val INVOICE = "invoice"
+    const val INVOICE_DETAIL = "invoice/{invoiceId}"
     const val RATES = "rates/{employeeId}/{employeeName}"
 
     fun rates(employeeId: Long, employeeName: String): String {
         val encoded = URLEncoder.encode(employeeName, "UTF-8")
         return "rates/$employeeId/$encoded"
     }
+
+    fun invoiceDetail(invoiceId: Long): String = "invoice/$invoiceId"
 }
 
 class MainActivity : ComponentActivity() {
@@ -73,7 +78,30 @@ private fun JangbuApp() {
                 onProgress = { nav.navigate(Routes.PROGRESS) },
                 onClients = { nav.navigate(Routes.CLIENTS) },
                 onItems = { nav.navigate(Routes.ITEMS) },
-                onEmployees = { nav.navigate(Routes.EMPLOYEES) }
+                onEmployees = { nav.navigate(Routes.EMPLOYEES) },
+                onPayroll = { nav.navigate(Routes.PAYROLL) },
+                onInvoice = { nav.navigate(Routes.INVOICE) }
+            )
+        }
+
+        composable(Routes.PAYROLL) {
+            PayrollScreen(onBack = { nav.popBackStack() })
+        }
+
+        composable(Routes.INVOICE) {
+            InvoiceScreen(
+                onBack = { nav.popBackStack() },
+                onOpenInvoice = { id -> nav.navigate(Routes.invoiceDetail(id)) }
+            )
+        }
+
+        composable(
+            route = Routes.INVOICE_DETAIL,
+            arguments = listOf(navArgument("invoiceId") { type = NavType.LongType })
+        ) { entry ->
+            InvoiceDetailScreen(
+                invoiceId = entry.arguments?.getLong("invoiceId") ?: 0L,
+                onBack = { nav.popBackStack() }
             )
         }
 

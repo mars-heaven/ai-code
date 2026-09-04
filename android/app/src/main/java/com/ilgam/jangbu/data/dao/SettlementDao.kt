@@ -207,6 +207,9 @@ interface InvoiceDao {
     @Query("SELECT * FROM invoice_photos WHERE invoiceId = :invoiceId ORDER BY takenAt")
     fun observePhotos(invoiceId: Long): Flow<List<InvoicePhoto>>
 
+    @Query("SELECT * FROM invoice_photos WHERE invoiceId = :invoiceId")
+    suspend fun getPhotos(invoiceId: Long): List<InvoicePhoto>
+
     @Insert
     suspend fun insertPhoto(photo: InvoicePhoto): Long
 

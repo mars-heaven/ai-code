@@ -2,6 +2,7 @@ package com.ilgam.jangbu.data
 
 import androidx.room.withTransaction
 import com.ilgam.jangbu.data.entity.*
+import com.ilgam.jangbu.util.deletePhotoFile
 import com.ilgam.jangbu.util.toDbInt
 import java.time.LocalDate
 
@@ -188,13 +189,34 @@ class JangbuRepository(private val db: JangbuDatabase) {
         invoiceId
     }
 
-    suspend fun cancelInvoice(invoiceId: Long) = db.withTransaction {
-        logs.detachFromInvoice(invoiceId)
-        invoices.delete(invoiceId)
+    /** 계산서 취소 — 묶음을 풀고 붙여 둔 사진 파일까지 정리합니다. */
+    suspend fun cancelInvoice(invoiceId: Long) {
+        val photoPaths = invoices.getPhotos(invoiceId).map { it.filePath }
+        db.withTransaction {
+            logs.detachFromInvoice(invoiceId)
+            // invoice_photos 는 CASCADE 로 함께 지워집니다.
+            invoices.delete(invoiceId)
+        }
+        photoPaths.forEach { deletePhotoFile(it) }
     }
 
     suspend fun markInvoicePaid(invoiceId: Long, paidDate: LocalDate = LocalDate.now()) {
         invoices.markPaid(invoiceId, paidDate.toDbInt())
+    }
+
+    // ------------------------------------------------------------------
+    // 계산서 사진
+    // ------------------------------------------------------------------
+    suspend fun addInvoicePhoto(invoiceId: Long, filePath: String, memo: String = "") {
+        invoices.insertPhoto(
+            InvoicePhoto(invoiceId = invoiceId, filePath = filePath, memo = memo)
+        )
+    }
+
+    /** 목록에서 지우고 휴대폰에 저장된 사진 파일도 함께 지웁니다. */
+    suspend fun removeInvoicePhoto(photoId: Long, filePath: String) {
+        invoices.deletePhoto(photoId)
+        deletePhotoFile(filePath)
     }
 
     // ------------------------------------------------------------------

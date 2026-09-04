@@ -5,10 +5,16 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- 음성 인식 앱 조회 -->
+    <!-- 계산서 사진은 휴대폰의 카메라 앱을 불러 찍습니다(카메라가 없어도 앱은 설치됩니다). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- 음성 인식 앱과 카메라 앱 조회 -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>
     </queries>
 
@@ -34,6 +40,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 계산서 사진을 찍을 때 카메라 앱에 저장 위치를 넘겨 주기 위한 설정입니다. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

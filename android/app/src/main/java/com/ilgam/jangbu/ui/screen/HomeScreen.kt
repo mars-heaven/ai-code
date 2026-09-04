@@ -10,8 +10,9 @@ import com.ilgam.jangbu.data.JangbuRepository
 import com.ilgam.jangbu.ui.component.*
 import com.ilgam.jangbu.ui.jangbuViewModel
 import com.ilgam.jangbu.ui.rememberRepository
-import com.ilgam.jangbu.util.toShortDisplay
 import com.ilgam.jangbu.util.toDbInt
+import com.ilgam.jangbu.util.toMoneyWon
+import com.ilgam.jangbu.util.toShortDisplay
 import com.ilgam.jangbu.util.withUnit
 import kotlinx.coroutines.flow.*
 import java.time.LocalDate
@@ -40,6 +41,21 @@ class HomeViewModel(repo: JangbuRepository) : ViewModel() {
     val remainQty = repo.orders.observeInProgress()
         .map { list -> list.sumOf { it.remainQty } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** 기간과 상관없이 아직 마감하지 않은 공임 전부 */
+    val unpaidWage = repo.payrolls.observeUnpaidWages(ALL_FROM, ALL_TO)
+        .map { list -> list.sumOf { it.totalWage } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    /** 계산서는 냈는데 아직 못 받은 돈 */
+    val receivable = repo.invoices.observeUnpaid()
+        .map { list -> list.sumOf { it.totalAmount } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    private companion object {
+        const val ALL_FROM = 20000101
+        const val ALL_TO = 99991231
+    }
 }
 
 @Composable
@@ -49,7 +65,9 @@ fun HomeScreen(
     onProgress: () -> Unit,
     onClients: () -> Unit,
     onItems: () -> Unit,
-    onEmployees: () -> Unit
+    onEmployees: () -> Unit,
+    onPayroll: () -> Unit,
+    onInvoice: () -> Unit
 ) {
     val repo = rememberRepository()
     val vm = jangbuViewModel { HomeViewModel(repo) }
@@ -59,8 +77,8 @@ fun HomeScreen(
     val clientCount by vm.clientCount.collectAsState()
     val itemCount by vm.itemCount.collectAsState()
     val employeeCount by vm.employeeCount.collectAsState()
-
-    var showComingSoon by remember { mutableStateOf<String?>(null) }
+    val unpaidWage by vm.unpaidWage.collectAsState()
+    val receivable by vm.receivable.collectAsState()
 
     JangbuScreen(
         title = "일감장부",
@@ -94,8 +112,18 @@ fun HomeScreen(
             BigButton("진행 현황", onProgress, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BigButton("급여 정산", { showComingSoon = "급여 정산" }, Modifier.weight(1f))
-            BigButton("거래처 정산", { showComingSoon = "거래처 정산" }, Modifier.weight(1f))
+            BigButton(
+                text = "급여 정산",
+                sub = if (unpaidWage > 0L) "줄 돈 ${unpaidWage.toMoneyWon()}" else "정산할 공임 없음",
+                onClick = onPayroll,
+                modifier = Modifier.weight(1f)
+            )
+            BigButton(
+                text = "거래처 정산",
+                sub = if (receivable > 0L) "받을 돈 ${receivable.toMoneyWon()}" else "받을 돈 없음",
+                onClick = onInvoice,
+                modifier = Modifier.weight(1f)
+            )
         }
 
         SectionTitle("기초 등록")
@@ -117,17 +145,5 @@ fun HomeScreen(
         )
 
         Spacer(Modifier.height(8.dp))
-    }
-
-    val soon = showComingSoon
-    if (soon != null) {
-        ConfirmDialog(
-            title = "아직 준비 중입니다",
-            message = "‘$soon’ 기능은 다음 단계에서 만들어집니다.\n지금은 거래처·품목·직원을 먼저 등록해 주세요.",
-            confirmText = "알겠습니다",
-            dismissText = "닫기",
-            onConfirm = { showComingSoon = null },
-            onDismiss = { showComingSoon = null }
-        )
     }
 }
